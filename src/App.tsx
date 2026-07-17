@@ -5,6 +5,7 @@ import type { SimulationEventType } from '@/features/simulator/domain/types'
 import FunctionalWorkspaceView from '@/features/simulator/components/functional-workspace-view'
 import FunctionalPullRequestsView from '@/features/simulator/components/functional-pull-requests-view'
 import FunctionalFeedbackView from '@/features/simulator/components/functional-feedback-view'
+import { agentPortfolios, type AgentPortfolio } from '@/features/simulator/domain/agent-profiles'
 import {
   ArrowRight, Bell, Bot, Check, ChevronDown, CircleDot, Clock3, Code2,
   Columns3, FileCode2, GitBranch, Inbox, Layers3, LayoutDashboard, Lock,
@@ -12,7 +13,7 @@ import {
   Settings, ShieldCheck, Sparkles, TerminalSquare, UsersRound, X,
 } from 'lucide-react'
 
-type View = 'home' | 'issues' | 'workspace' | 'pulls' | 'feedback' | 'team-space'
+type View = 'home' | 'issues' | 'workspace' | 'pulls' | 'feedback' | 'team-space' | 'agent-profile'
 type Toast = { message: string; tone?: 'success' | 'warning' } | null
 type TeamSpace = { id: string; name: string; unread: number }
 type TeamMessage = { id: number; spaceId: string; author: string; role: string; initials: string; tone: string; time: string; text: string; link: string }
@@ -83,6 +84,7 @@ function App() {
   const [selectedSpaceId, setSelectedSpaceId] = useState('product-usage')
   const [newSpaceName, setNewSpaceName] = useState('')
   const [isAddingSpace, setIsAddingSpace] = useState(false)
+  const [selectedAgentId, setSelectedAgentId] = useState('noah')
   const [draft, setDraft] = useState('')
   const [toast, setToast] = useState<Toast>(null)
   const [standupDone, setStandupDone] = useState(false)
@@ -113,6 +115,7 @@ function App() {
   const progress = useMemo(() => [standupDone, testsPassed, committed, prOpen, reviewAddressed].filter(Boolean).length, [standupDone, testsPassed, committed, prOpen, reviewAddressed])
   const selectedSpace = teamSpaces.find((space) => space.id === selectedSpaceId) || teamSpaces[0]
   const activeMessages = messages.filter((message) => message.spaceId === selectedSpaceId)
+  const selectedAgent = agentPortfolios[selectedAgentId] || agentPortfolios.noah
   const notify = (message: string, tone: 'success' | 'warning' = 'success') => {
     setToast({ message, tone }); window.setTimeout(() => setToast(null), 3200)
   }
@@ -125,6 +128,14 @@ function App() {
       return false
     }
     return true
+  }
+  const requestAgentTurn = async (channelId: string, userMessage: string) => {
+    const response = await fetch('/api/simulation/agent-turns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId, channelId, userMessage }) })
+    if (!response.ok) {
+      notify('Your teammates could not respond right now. Try again in a moment.', 'warning')
+      return null
+    }
+    return response.json() as Promise<{ turn: { agent: { id: string; name: string; role: string }; message: string } }>
   }
   const completeStandup = async () => {
     if (!await recordSimulationEvent('standup_posted')) return
@@ -153,6 +164,11 @@ function App() {
     setTeamSpaces((spaces) => spaces.map((space) => space.id === spaceId ? { ...space, unread: 0 } : space))
     setView('team-space')
   }
+  const openAgentPortfolio = (agentId: string) => {
+    if (!agentPortfolios[agentId]) return
+    setSelectedAgentId(agentId)
+    setView('agent-profile')
+  }
   const addTeamSpace = () => {
     const name = newSpaceName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
     if (!name) return notify('Give the new team space a name.', 'warning')
@@ -163,17 +179,19 @@ function App() {
   const sendMessage = async () => {
     if (!draft.trim()) return
     const message = draft.trim()
-    if (!await recordSimulationEvent('chat_message', { message })) return
     const spaceId = selectedSpaceId
     const spaceName = selectedSpace?.name || 'team space'
+    if (!await recordSimulationEvent('chat_message', { message, channelId: spaceId })) return
     setMessages((items) => [...items, { id: Date.now(), spaceId, author: 'You', role: 'Full-stack Engineer', initials: 'Y', tone: 'blue', time: 'now', text: message, link: '' }])
     log(`Sent a message in #${spaceName}`); setDraft(''); notify('Message sent.')
     window.setTimeout(async () => {
-      if (!await recordSimulationEvent('agent_reply')) return
-      const reply = spaceId === 'releases' ? 'Thanks for flagging this. I added the release note and will keep the train on schedule.' : spaceId === 'engineering' ? 'I’ve captured that in the engineering thread. Please include the relevant test or reproduction detail when you can.' : 'Good question. Please use the existing canManageBilling guard; the empty state should still explain alerts when the plan CTA is unavailable.'
-      setMessages((items) => [...items, { id: Date.now() + 1, spaceId, author: 'Noah Patel', role: 'Tech Lead', initials: 'N', tone: 'mint', time: 'now', text: reply, link: '' }])
+      const result = await requestAgentTurn(spaceId, message)
+      if (!result) return
+      const tone = result.turn.agent.id === 'maya' ? 'violet' : result.turn.agent.id === 'adele' ? 'orange' : result.turn.agent.id === 'devon' ? 'blue' : 'mint'
+      const role = result.turn.agent.role.split('_').map((part) => part[0].toUpperCase() + part.slice(1)).join(' ')
+      setMessages((items) => [...items, { id: Date.now() + 1, spaceId, author: result.turn.agent.name, role, initials: result.turn.agent.name[0], tone, time: 'now', text: result.turn.message, link: '' }])
       setTeamSpaces((spaces) => spaces.map((space) => space.id === spaceId ? { ...space, unread: spaceId === selectedSpaceId ? 0 : space.unread + 1 } : space))
-      log(`Noah replied in #${spaceName}`)
+      log(`${result.turn.agent.name.split(' ')[0]} replied in #${spaceName}`)
     }, 700)
   }
   const addressReview = async () => {
@@ -219,20 +237,21 @@ function App() {
       <div className="team-spaces-list">{teamSpaces.map((space) => <button key={space.id} className={`team-space ${selectedSpaceId === space.id ? 'active-space' : ''}`} onClick={() => selectTeamSpace(space.id)}><span>#</span> {space.name} {space.unread > 0 && <b>{space.unread}</b>}</button>)}</div>
       {isAddingSpace ? <div className="new-space-form"><input autoFocus value={newSpaceName} onChange={(event) => setNewSpaceName(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && addTeamSpace()} placeholder="space-name"/><button onClick={addTeamSpace}><Check size={13} /></button><button onClick={() => { setIsAddingSpace(false); setNewSpaceName('') }}><X size={13} /></button></div> : <button className="new-space" onClick={() => setIsAddingSpace(true)}><Plus size={15} /> Add a space</button>}
       <div className="sidebar-bottom">
-        <div className="team-row"><Avatar id="maya" tone="violet" small /><span>Maya Chen</span><span className="online" /></div>
-        <div className="team-row"><Avatar id="noah" tone="mint" small /><span>Noah Patel</span><span className="online" /></div>
-        <div className="team-row"><Avatar id="adele" tone="orange" small /><span>Adele Okafor</span></div>
+        <button className="team-row" onClick={() => openAgentPortfolio('maya')}><Avatar id="maya" tone="violet" small /><span>Maya Chen</span><i className="online" /></button>
+        <button className="team-row" onClick={() => openAgentPortfolio('noah')}><Avatar id="noah" tone="mint" small /><span>Noah Patel</span><i className="online" /></button>
+        <button className="team-row" onClick={() => openAgentPortfolio('adele')}><Avatar id="adele" tone="orange" small /><span>Adele Okafor</span></button>
         <div className="your-profile"><Avatar id="you" tone="blue" /><span><b>Alex Morgan</b><small>Full-stack engineer</small></span><MoreHorizontal size={17} /></div>
       </div>
     </aside>
 
     <main className="main-area">
       <header className="topbar">
-        <div className="crumbs"><span>SignalDesk</span><ArrowRight size={13} /><b>{view === 'home' ? 'Today' : view === 'team-space' ? `# ${selectedSpace?.name}` : nav.find((item) => item.id === view)?.label}</b></div>
+        <div className="crumbs"><span>SignalDesk</span><ArrowRight size={13} /><b>{view === 'home' ? 'Today' : view === 'team-space' ? `# ${selectedSpace?.name}` : view === 'agent-profile' ? selectedAgent.name : nav.find((item) => item.id === view)?.label}</b></div>
         <div className="top-actions"><button className="icon-button"><Search size={18} /></button><button className="icon-button notification"><Bell size={18} /><i /></button><button className="help-button">?</button></div>
       </header>
-      {view === 'home' && <HomeView standupDone={standupDone} showCeremony={showCeremony} setShowCeremony={setShowCeremony} completeStandup={completeStandup} messages={activeMessages} selectedTeamSpace={selectedSpace} draft={draft} setDraft={setDraft} sendMessage={sendMessage} activity={activity} setView={setView} testsPassed={testsPassed} committed={committed} prOpen={prOpen} reviewAddressed={reviewAddressed} progress={progress} />}
-      {view === 'team-space' && <TeamSpaceView space={selectedSpace} messages={activeMessages} draft={draft} setDraft={setDraft} sendMessage={sendMessage} />}
+      {view === 'home' && <HomeView standupDone={standupDone} showCeremony={showCeremony} setShowCeremony={setShowCeremony} completeStandup={completeStandup} messages={activeMessages} selectedTeamSpace={selectedSpace} draft={draft} setDraft={setDraft} sendMessage={sendMessage} activity={activity} setView={setView} openAgentPortfolio={openAgentPortfolio} testsPassed={testsPassed} committed={committed} prOpen={prOpen} reviewAddressed={reviewAddressed} progress={progress} />}
+      {view === 'team-space' && <TeamSpaceView space={selectedSpace} messages={activeMessages} draft={draft} setDraft={setDraft} sendMessage={sendMessage} openAgentPortfolio={openAgentPortfolio} />}
+      {view === 'agent-profile' && <AgentPortfolioView agent={selectedAgent} openTeamSpace={() => selectTeamSpace(selectedAgent.id === 'devon' ? 'engineering' : selectedAgent.id === 'maya' ? 'releases' : 'product-usage')} />}
       {view === 'issues' && <IssuesView setView={setView} />}
       {view === 'workspace' && <FunctionalWorkspaceView code={workspaceCode} setCode={setWorkspaceCode} testsPassed={testsPassed} committed={committed} runTests={runTests} commit={commit} openPr={openPr} />}
       {view === 'pulls' && <FunctionalPullRequestsView prOpen={prOpen} reviewAddressed={reviewAddressed} reviewReplied={reviewReplied} approved={approved} merged={merged} addressReview={addressReview} replyToReview={replyToReview} mergePullRequest={mergePullRequest} />}
@@ -242,8 +261,8 @@ function App() {
   </div>
 }
 
-function HomeView(props: { standupDone: boolean; showCeremony: boolean; setShowCeremony: (v: boolean) => void; completeStandup: () => void; messages: TeamMessage[]; selectedTeamSpace: TeamSpace; draft: string; setDraft: (v: string) => void; sendMessage: () => void; activity: string[]; setView: (v: View) => void; testsPassed: boolean; committed: boolean; prOpen: boolean; reviewAddressed: boolean; progress: number }) {
-  const { standupDone, showCeremony, setShowCeremony, completeStandup, messages, selectedTeamSpace, draft, setDraft, sendMessage, activity, setView, testsPassed, committed, prOpen, reviewAddressed, progress } = props
+function HomeView(props: { standupDone: boolean; showCeremony: boolean; setShowCeremony: (v: boolean) => void; completeStandup: () => void; messages: TeamMessage[]; selectedTeamSpace: TeamSpace; draft: string; setDraft: (v: string) => void; sendMessage: () => void; activity: string[]; setView: (v: View) => void; openAgentPortfolio: (id: string) => void; testsPassed: boolean; committed: boolean; prOpen: boolean; reviewAddressed: boolean; progress: number }) {
+  const { standupDone, showCeremony, setShowCeremony, completeStandup, messages, selectedTeamSpace, draft, setDraft, sendMessage, activity, setView, openAgentPortfolio, testsPassed, committed, prOpen, reviewAddressed, progress } = props
   return <div className="page home-page">
     <section className="welcome"><div><p className="eyebrow">WEDNESDAY, SEPTEMBER 18 · SPRINT 2 OF 3</p><h1>Good morning, Alex <span>✦</span></h1><p>Here’s what needs your attention in SignalDesk today.</p></div><button className="time-button"><Clock3 size={16} /> Simulated time <b>09:42</b><ChevronDown size={14} /></button></section>
     <section className="priority-grid">
@@ -269,7 +288,7 @@ function HomeView(props: { standupDone: boolean; showCeremony: boolean; setShowC
     </div>
     <div className="content-grid lower-grid">
       <section className="card conversation-card"><div className="section-head"><div><span className="eyebrow">TEAM CONVERSATION</span><h2><span className="hash">#</span> {selectedTeamSpace.name} {selectedTeamSpace.unread > 0 && <em>{selectedTeamSpace.unread} unread</em>}</h2></div><button className="ghost-button">Open channel <ArrowRight size={14} /></button></div>
-        <div className="messages">{messages.map((message) => <div className="message" key={message.id}><Avatar id={message.author === 'You' ? 'you' : message.author.startsWith('Maya') ? 'maya' : message.author.startsWith('Noah') ? 'noah' : 'adele'} tone={message.tone} /><div><div className="message-meta"><b>{message.author}</b><span>{message.role}</span><time>{message.time}</time></div><p>{message.text} {message.link && <a>{message.link}</a>}</p></div></div>)}</div>
+        <div className="messages">{messages.map((message) => { const agentId = message.author === 'You' ? '' : message.author.startsWith('Maya') ? 'maya' : message.author.startsWith('Noah') ? 'noah' : message.author.startsWith('Adele') ? 'adele' : 'devon'; return <div className="message" key={message.id}><Avatar id={agentId || 'you'} tone={message.tone} /><div><div className="message-meta">{agentId ? <button className="agent-name" onClick={() => openAgentPortfolio(agentId)}>{message.author}</button> : <b>{message.author}</b>}<span>{message.role}</span><time>{message.time}</time></div><p>{message.text} {message.link && <a>{message.link}</a>}</p></div></div>})}</div>
         <div className="message-composer"><button><Paperclip size={17} /></button><input className="message-input" value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && sendMessage()} placeholder={`Message #${selectedTeamSpace.name}`}/><button className="send-button" onClick={sendMessage}><Send size={16} /></button></div>
       </section>
       <section className="card activity-card"><div className="section-head"><div><span className="eyebrow">LIVE ORG ACTIVITY</span><h2>While you were away</h2></div><button className="ghost-button">View all</button></div>
@@ -280,11 +299,20 @@ function HomeView(props: { standupDone: boolean; showCeremony: boolean; setShowC
   </div>
 }
 
-function TeamSpaceView({ space, messages, draft, setDraft, sendMessage }: { space: TeamSpace; messages: TeamMessage[]; draft: string; setDraft: (value: string) => void; sendMessage: () => void }) {
+function TeamSpaceView({ space, messages, draft, setDraft, sendMessage, openAgentPortfolio }: { space: TeamSpace; messages: TeamMessage[]; draft: string; setDraft: (value: string) => void; sendMessage: () => void; openAgentPortfolio: (id: string) => void }) {
+  const member = (id: 'maya' | 'noah' | 'adele', label: string) => <button className="channel-member" onClick={() => openAgentPortfolio(id)}><Avatar id={id} tone={agentPortfolios[id].tone} small /> {agentPortfolios[id].name} <span>{label}</span></button>
   return <div className="page team-space-page">
     <section className="channel-hero"><div><p className="eyebrow">TEAM SPACE</p><h1><span>#</span> {space.name}</h1><p>Decisions and updates shared with the SignalDesk team.</p></div><div className="channel-members"><div className="avatar-stack"><Avatar id="maya" tone="violet" small /><Avatar id="noah" tone="mint" small /><Avatar id="adele" tone="orange" small /></div><span>6 members</span></div></section>
-    <section className="channel-layout"><article className="channel-thread"><div className="channel-notice"><MessageSquare size={16} /><span>This is the beginning of <b>#{space.name}</b>. Keep updates discoverable for the whole team.</span></div><div className="channel-messages">{messages.map((message) => <div className="message channel-message" key={message.id}><Avatar id={message.author === 'You' ? 'you' : message.author.startsWith('Maya') ? 'maya' : message.author.startsWith('Noah') ? 'noah' : message.author.startsWith('Adele') ? 'adele' : 'devon'} tone={message.tone} /><div><div className="message-meta"><b>{message.author}</b><span>{message.role}</span><time>{message.time}</time></div><p>{message.text} {message.link && <a>{message.link}</a>}</p></div></div>)}</div><div className="channel-composer"><button><Paperclip size={17} /></button><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && sendMessage()} placeholder={`Message #${space.name}`}/><button className="send-button" onClick={sendMessage}><Send size={16} /></button></div></article>
-      <aside className="channel-details"><span className="eyebrow">ABOUT THIS SPACE</span><h3>Team context</h3><p>{space.name === 'releases' ? 'Coordinate launch risks, release status, and rollout decisions.' : space.name === 'engineering' ? 'Discuss implementation details, system health, and technical decisions.' : 'Coordinate the product-usage initiative, handoffs, and customer-impact decisions.'}</p><hr/><span className="eyebrow">MEMBERS</span><div className="channel-member"><Avatar id="maya" tone="violet" small /> Maya Chen <span>PM</span></div><div className="channel-member"><Avatar id="noah" tone="mint" small /> Noah Patel <span>Tech lead</span></div><div className="channel-member"><Avatar id="you" tone="blue" small /> Alex Morgan <span>You</span></div></aside></section>
+    <section className="channel-layout"><article className="channel-thread"><div className="channel-notice"><MessageSquare size={16} /><span>This is the beginning of <b>#{space.name}</b>. Keep updates discoverable for the whole team.</span></div><div className="channel-messages">{messages.map((message) => { const agentId = message.author === 'You' ? '' : message.author.startsWith('Maya') ? 'maya' : message.author.startsWith('Noah') ? 'noah' : message.author.startsWith('Adele') ? 'adele' : 'devon'; return <div className="message channel-message" key={message.id}><Avatar id={agentId || 'you'} tone={message.tone} /><div><div className="message-meta">{agentId ? <button className="agent-name" onClick={() => openAgentPortfolio(agentId)}>{message.author}</button> : <b>{message.author}</b>}<span>{message.role}</span><time>{message.time}</time></div><p>{message.text} {message.link && <a>{message.link}</a>}</p></div></div>})}</div><div className="channel-composer"><button><Paperclip size={17} /></button><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && sendMessage()} placeholder={`Message #${space.name}`}/><button className="send-button" onClick={sendMessage}><Send size={16} /></button></div></article>
+      <aside className="channel-details"><span className="eyebrow">ABOUT THIS SPACE</span><h3>Team context</h3><p>{space.name === 'releases' ? 'Coordinate launch risks, release status, and rollout decisions.' : space.name === 'engineering' ? 'Discuss implementation details, system health, and technical decisions.' : 'Coordinate the product-usage initiative, handoffs, and customer-impact decisions.'}</p><hr/><span className="eyebrow">MEMBERS</span>{member('maya', 'PM')}{member('noah', 'Tech lead')}{member('adele', 'Design')}<div className="channel-member"><Avatar id="you" tone="blue" small /> Alex Morgan <span>You</span></div></aside></section>
+  </div>
+}
+
+function AgentPortfolioView({ agent, openTeamSpace }: { agent: AgentPortfolio; openTeamSpace: () => void }) {
+  return <div className="page portfolio-page">
+    <section className="portfolio-hero"><div className={`portfolio-avatar ${agent.tone}`}>{agent.initials}</div><div><p className="eyebrow">AI TEAMMATE PORTFOLIO</p><h1>{agent.name}</h1><span className="portfolio-role">{agent.role}</span><p>{agent.headline}</p></div><button className="primary-button" onClick={openTeamSpace}><MessageSquare size={16} /> Message {agent.name.split(' ')[0]}</button></section>
+    <div className="portfolio-grid"><section className="card portfolio-summary"><span className="eyebrow">ROLE MANDATE</span><h2>How {agent.name.split(' ')[0]} contributes</h2><p>{agent.bio}</p><div className="portfolio-section"><span className="eyebrow">COLLABORATION STYLE</span><p>{agent.collaborationStyle}</p></div></section><section className="card portfolio-focus"><span className="eyebrow">CURRENT COMMITMENTS</span><h2>What they’re focused on</h2>{agent.currentFocus.map((item) => <div className="focus-row" key={item}><CircleDot size={15} /> {item}</div>)}<button className="ghost-button" onClick={openTeamSpace}>Open their team space <ArrowRight size={14} /></button></section></div>
+    <div className="portfolio-grid lower-portfolio"><section className="card"><span className="eyebrow">CORE STRENGTHS</span><h2>Working toolkit</h2><div className="strength-tags">{agent.strengths.map((strength) => <span key={strength}>{strength}</span>)}</div></section><section className="card"><span className="eyebrow">ORGANIZATION EVIDENCE</span><h2>Recent contribution trail</h2><div className="evidence-trail">{agent.evidence.map((item) => <div key={item}><Check size={15} /> {item}</div>)}</div></section></div>
   </div>
 }
 

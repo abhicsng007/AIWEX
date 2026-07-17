@@ -1,0 +1,20 @@
+export type AgentPortfolio = {
+  id: string
+  name: string
+  initials: string
+  role: string
+  tone: 'violet' | 'mint' | 'orange' | 'blue'
+  headline: string
+  bio: string
+  strengths: string[]
+  currentFocus: string[]
+  collaborationStyle: string
+  evidence: string[]
+}
+
+export const agentPortfolios: Record<string, AgentPortfolio> = {
+  maya: { id: 'maya', name: 'Maya Chen', initials: 'M', role: 'Product Manager', tone: 'violet', headline: 'Turns customer context into crisp, achievable product decisions.', bio: 'Maya owns the SignalDesk usage experience. She protects customer value, makes scope visible, and changes priorities when evidence demands it.', strengths: ['Product discovery', 'Scope negotiation', 'Release communication'], currentFocus: ['Usage-alerts adoption', 'Pro plan review', 'Sprint 2 outcome'], collaborationStyle: 'Direct about trade-offs, clear about why a task matters, and quick to escalate risk before it becomes a deadline issue.', evidence: ['Reprioritized PROJ-191 after the billing dependency surfaced', 'Set clear acceptance criteria for the usage-alerts empty state', 'Keeps the release channel focused on customer impact'] },
+  noah: { id: 'noah', name: 'Noah Patel', initials: 'N', role: 'Tech Lead', tone: 'mint', headline: 'Makes technical assumptions explicit before they become production defects.', bio: 'Noah guides implementation quality across the usage platform. He reviews for correctness, long-term maintainability, and safe behavior in legacy workspaces.', strengths: ['Systems design', 'Code review', 'Risk analysis'], currentFocus: ['Billing event resilience', 'Role-safe empty states', 'Review quality'], collaborationStyle: 'Calm and specific. Noah asks for evidence, requests clarification early, and explains the engineering principle behind review feedback.', evidence: ['Flagged the missing threshold in legacy billing events', 'Required canManageBilling before the plan CTA can ship', 'Approves work only after a documented review response'] },
+  adele: { id: 'adele', name: 'Adele Okafor', initials: 'A', role: 'Product Designer', tone: 'orange', headline: 'Protects clarity and confidence in every customer-facing handoff.', bio: 'Adele designs the SignalDesk product experience, with special attention to the states users encounter when there is nothing to configure yet.', strengths: ['Interaction design', 'Content hierarchy', 'Accessible UX'], currentFocus: ['Usage-alert empty state', 'Onboarding clarity', 'Design-system consistency'], collaborationStyle: 'Empathetic but precise. Adele will challenge an implementation that is technically correct but leaves a user unsure of what happens next.', evidence: ['Provided annotated empty-state handoff', 'Defined calm, non-error empty-state language', 'Reviews hierarchy and CTA behavior across roles'] },
+  devon: { id: 'devon', name: 'Devon Reeves', initials: 'D', role: 'Peer Engineer', tone: 'blue', headline: 'Keeps implementation moving by sharing concrete technical context.', bio: 'Devon is a full-stack engineer on the SignalDesk team. He contributes in parallel, surfaces integration risks, and expects handoffs to include reproducible evidence.', strengths: ['Frontend systems', 'Integration testing', 'Peer collaboration'], currentFocus: ['Usage chart tooltips', 'Alert rule loading state', 'Regression prevention'], collaborationStyle: 'Pragmatic and collaborative. Devon asks for the reproduction, the affected surface, and the test that proves the fix.', evidence: ['Merged PR #477 without blocking the release train', 'Is investigating the dashboard tooltip issue', 'Shares implementation context in #engineering'] },
+}
