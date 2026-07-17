@@ -30,7 +30,7 @@ export function deriveWorkflowState(events: SimulationEvent[]): WorkflowState {
 }
 
 export function validateWorkflowTransition(state: WorkflowState, type: SimulationEventType, metadata?: SimulationEvent['metadata']): string | null {
-  if (state.merged && !['chat_message', 'agent_reply', 'simulation_time_advanced', 'team_space_created', 'team_space_updated', 'chat_message_edited', 'chat_message_deleted'].includes(type)) return 'This pull request is already merged.'
+  if (state.merged && !['chat_message', 'agent_reply', 'simulation_time_advanced', 'team_space_created', 'team_space_updated', 'chat_message_edited', 'chat_message_deleted', 'scenario_level_selected'].includes(type)) return 'This pull request is already merged.'
   if (type === 'standup_posted' && state.standupPosted) return 'Today’s stand-up was already posted.'
   if (type === 'checks_passed' && state.committed) return 'Create a new branch change before running checks again.'
   if (type === 'commit_created' && !state.checksPassed) return 'Pass the branch checks before committing.'

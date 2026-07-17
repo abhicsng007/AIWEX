@@ -17,6 +17,7 @@ export type SimulationEventType =
   | 'team_space_updated'
   | 'chat_message_edited'
   | 'chat_message_deleted'
+  | 'scenario_level_selected'
 
 export type SimulationEvent = {
   id: string

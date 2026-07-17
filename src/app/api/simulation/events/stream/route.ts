@@ -12,7 +12,14 @@ export async function GET(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const send = (event: string, payload: unknown) => controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`))
-      const existing = await inMemoryEventStore.list(organizationId)
+      let existing
+      try { existing = await inMemoryEventStore.list(organizationId) }
+      catch (error) {
+        const message = error instanceof Error ? error.message : 'The simulation backend could not be initialized.'
+        send('backend-error', { code: 'BACKEND_SCHEMA_UNAVAILABLE', message, action: 'Run supabase/migrations/202607170001_simulator_backend.sql in the Supabase SQL Editor.' })
+        controller.close()
+        return
+      }
       send('snapshot', existing)
       unsubscribe = inMemoryEventStore.subscribe((event) => {
         if (event.organizationId === organizationId) send('simulation-event', event)

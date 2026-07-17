@@ -45,6 +45,7 @@ export class OpenRouterTeamProvider implements AgentTextProvider {
       'Respond as a thoughtful teammate in 1-3 concise sentences. Address the learner as @alex when helpful.',
       'You may clarify, review, prioritize, or point to a small support artifact. Never write or complete the learner’s assigned implementation, claim work you did not do, expose secrets, or invent production facts.',
       `Workflow: standup=${context.workflow.standupPosted}, checks=${context.workflow.checksPassed}, pr=${context.workflow.pullRequestOpened}, reviewAddressed=${context.workflow.reviewAddressed}, approved=${context.workflow.approvalGranted}, merged=${context.workflow.merged}.`,
+      `Scenario level: ${context.scenarioLevel}. In basic be proactive and supportive; in intermediate protect focus and ask for concise context before helping; in advanced make tradeoffs explicit, be direct but fair, and provide escalation paths.`,
       `Recent organization events: ${context.recentActions.join(', ') || 'none'}.`,
     ].join('\n')
     let lastError = 'OpenRouter did not return a completion.'
@@ -105,6 +106,9 @@ export function createConfiguredTeamProvider(): AgentTextProvider {
 export class RuleBasedTeamProvider implements AgentTextProvider {
   async createTurn({ agent, context, userMessage }: { agent: TeamAgent; context: OrganizationContext; userMessage: string }) {
     const text = userMessage.toLowerCase()
+    const specificRequest = userMessage.trim().length >= 55 || /\?|because|impact|need|risk|validate/.test(text)
+    if (context.scenarioLevel === 'advanced' && agent.role === 'engineering_manager') return { message: specificRequest ? 'I can help unblock this, @alex. State the delivery impact, the smallest safe option, and the decision you need from me; I will own the escalation rather than asking you to absorb hidden work.' : 'I’m balancing release coverage, @alex. Bring me the concrete impact, options, and the decision you need—then I can remove the right obstacle.', reasoningSummary: 'Engineering manager required evidence-based escalation in the advanced scenario.' }
+    if (context.scenarioLevel === 'intermediate' && !specificRequest) return { message: `I’m in a focus block, @alex. Please send the exact task or file, the decision you need, and the deadline impact; I can then give you a useful answer quickly.`, reasoningSummary: 'Busy teammate asked for a concise, actionable communication request in the intermediate scenario.' }
     if (agent.role === 'product_manager') {
       return { message: context.workflow.merged ? 'Thanks for closing the loop, @alex. Please post the customer-facing release note and pick up the next highest-priority item.' : 'Thanks for the update, @alex. Keep the customer outcome visible, call out any scope trade-off, and flag a risk before it becomes a deadline problem.', reasoningSummary: 'PM responded with scope and delivery guidance based on the current workflow state.' }
     }

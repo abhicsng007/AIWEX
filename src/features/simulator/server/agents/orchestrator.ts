@@ -1,6 +1,7 @@
 import type { AgentTurn, OrganizationContext } from '@/features/simulator/domain/agents'
 import { deriveWorkflowState } from '@/features/simulator/domain/workflow'
 import { inMemoryEventStore } from '@/features/simulator/server/event-store'
+import { scenarioLevelFromEvents } from '@/features/simulator/domain/difficulty'
 import { createConfiguredTeamProvider } from './provider'
 import { selectAgent } from './registry'
 
@@ -14,6 +15,7 @@ export async function createAgentTurn(input: { organizationId: string; channelId
     channelId: input.channelId,
     workflow,
     recentActions: events.slice(-8).map((event) => event.type),
+    scenarioLevel: scenarioLevelFromEvents(events),
   }
   const agent = selectAgent(input.channelId, input.userMessage)
   const response = await provider.createTurn({ agent, context, userMessage: input.userMessage })

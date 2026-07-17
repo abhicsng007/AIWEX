@@ -33,4 +33,5 @@ export type OrganizationContext = {
     merged: boolean
   }
   recentActions: string[]
+  scenarioLevel: 'basic' | 'intermediate' | 'advanced'
 }
