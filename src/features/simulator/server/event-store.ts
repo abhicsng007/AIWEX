@@ -8,11 +8,15 @@ import type { SimulationEvent } from '../domain/types'
 export interface SimulationEventStore {
   append(event: SimulationEvent): Promise<void>
   list(organizationId: string): Promise<SimulationEvent[]>
+  subscribe(listener: (event: SimulationEvent) => void): () => void
 }
 
-const memoryEvents: SimulationEvent[] = []
+type SharedEventBus = { events: SimulationEvent[]; listeners: Set<(event: SimulationEvent) => void> }
+const globalBus = globalThis as typeof globalThis & { __shiftlineEventBus?: SharedEventBus }
+const sharedBus = globalBus.__shiftlineEventBus ||= { events: [], listeners: new Set<(event: SimulationEvent) => void>() }
 
 export const inMemoryEventStore: SimulationEventStore = {
-  async append(event) { memoryEvents.push(event) },
-  async list(organizationId) { return memoryEvents.filter((event) => event.organizationId === organizationId) },
+  async append(event) { sharedBus.events.push(event); sharedBus.listeners.forEach((listener) => listener(event)) },
+  async list(organizationId) { return sharedBus.events.filter((event) => event.organizationId === organizationId) },
+  subscribe(listener) { sharedBus.listeners.add(listener); return () => sharedBus.listeners.delete(listener) },
 }

@@ -10,6 +10,8 @@ export const teamAgents: TeamAgent[] = [
 
 export function selectAgent(channelId: string, message: string): TeamAgent {
   const normalized = message.toLowerCase()
+  const mentionedAgent = teamAgents.find((agent) => normalized.includes(`@${agent.id}`))
+  if (mentionedAgent) return mentionedAgent
   if (channelId === 'releases') return teamAgents.find((agent) => agent.id === 'maya')!
   if (channelId === 'engineering' && /(review|test|api|bug|guard|error)/.test(normalized)) return teamAgents.find((agent) => agent.id === 'noah')!
   if (channelId === 'engineering') return teamAgents.find((agent) => agent.id === 'devon')!

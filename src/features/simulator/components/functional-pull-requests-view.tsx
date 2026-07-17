@@ -1,34 +1,47 @@
 'use client'
 
-import { useState } from 'react'
-import { Check, GitBranch, Lock, MessageSquare, Send, ShieldCheck } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Check, FileDiff, GitBranch, Lock, MessageSquare, Plus, Send, X } from 'lucide-react'
 
-type Props = {
-  prOpen: boolean
-  reviewAddressed: boolean
-  reviewReplied: boolean
-  approved: boolean
-  merged: boolean
-  addressReview: () => void
-  replyToReview: (response: string) => void
-  mergePullRequest: (rationale: string) => void
-}
+type Status = 'draft' | 'open' | 'closed' | 'merged'
+type Comment = { id: number; author: string; text: string; createdAt: string }
+type PullRequest = { id: number; title: string; branch: string; status: Status; reviewers: string[]; comments: Comment[]; updatedAt: string; files: string[] }
+type Props = { prOpen: boolean; reviewAddressed: boolean; reviewReplied: boolean; approved: boolean; merged: boolean; addressReview: () => void; replyToReview: (response: string) => void; mergePullRequest: (rationale: string) => void }
 
-export default function FunctionalPullRequestsView({ prOpen, reviewAddressed, reviewReplied, approved, merged, addressReview, replyToReview, mergePullRequest }: Props) {
+const seed: PullRequest[] = [
+  { id: 479, title: 'Polish loading state for alert rules', branch: 'fix/alert-rules-loading', status: 'open', reviewers: ['alex'], comments: [{ id: 1, author: 'Devon Reeves', text: 'Could you confirm this does not shift the layout during a slow request?', createdAt: '12 min ago' }], updatedAt: '12 min ago', files: ['alert-rules.tsx'] },
+  { id: 486, title: 'Clarify usage chart tooltips', branch: 'feat/usage-tooltip-copy', status: 'draft', reviewers: ['maya'], comments: [], updatedAt: 'Yesterday', files: ['usage-chart.tsx', 'tooltip-copy.ts'] },
+]
+
+const labels: Record<Status, string> = { draft: 'DRAFT', open: 'OPEN', closed: 'CLOSED', merged: 'MERGED' }
+
+export default function FunctionalPullRequestsView(props: Props) {
+  const { prOpen, reviewAddressed, reviewReplied, approved, merged, addressReview, replyToReview, mergePullRequest } = props
+  const [records, setRecords] = useState<PullRequest[]>(seed)
+  const [selectedId, setSelectedId] = useState<number | null>(prOpen ? 482 : 479)
+  const [tab, setTab] = useState<'open' | 'draft' | 'closed'>('open')
+  const [comment, setComment] = useState('')
   const [response, setResponse] = useState('')
   const [rationale, setRationale] = useState('')
-  if (!prOpen) return <div className="page pulls-page"><section className="page-title"><div><p className="eyebrow">CODE REVIEW</p><h1>Pull requests</h1><p>Commit passing work, then open a pull request to begin the review cycle.</p></div></section><article className="empty-pr"><GitBranch size={28} /><h2>No pull request yet</h2><p>The merge gate unlocks only after your branch checks pass and your work is committed.</p></article></div>
-
-  const readyToMerge = approved && rationale.trim().length >= 20 && !merged
-  return <div className="page pulls-page">
-    <section className="page-title"><div><p className="eyebrow">CODE REVIEW</p><h1>Pull request #482</h1><p>Collaboration is part of the work. Resolve feedback and document the decision before merging.</p></div><span className={`pr-state ${merged ? 'merged' : 'open'}`}>{merged ? 'MERGED' : 'OPEN'}</span></section>
-    <article className="functional-pr-card">
-      <header><div><span className="open-dot" /> <b>feat/usage-alerts-empty-state → main</b><h2>Build the usage alerts empty state</h2><p>1 commit · 12 checks · requested reviewers: Noah Patel, Devon Reeves</p></div><div className="checks-mini"><ShieldCheck size={16} /> Checks passing</div></header>
-      <div className="functional-pr-grid"><main>
-        <section className="review-card"><div className="review-author"><span className="review-avatar">N</span><div><b>Noah Patel <em>{approved ? 'approved' : 'requested changes'}</em></b><small>Tech lead · just now</small></div></div><p>Nice start. We should avoid linking users directly to billing settings if their role can’t manage plans. Please use the existing <code>canManageBilling</code> guard and tell me how you validated the behavior.</p><div className="review-actions"><button onClick={addressReview} className={reviewAddressed ? 'resolved' : ''}>{reviewAddressed ? <><Check size={14} /> Change addressed</> : 'Mark as addressed'}</button></div></section>
-        <section className="reply-card"><label htmlFor="review-response">Your review response</label><textarea id="review-response" value={response} disabled={!reviewAddressed || reviewReplied} onChange={(event) => setResponse(event.target.value)} placeholder="Explain the change and how you validated it…"/><button className="primary-button" disabled={!reviewAddressed || reviewReplied} onClick={() => replyToReview(response)}><Send size={15} /> {reviewReplied ? 'Response sent' : 'Send response'}</button>{reviewReplied && <p className="helper-success"><Check size={14} /> Noah has been asked to approve the update.</p>}</section>
-      </main>
-      <aside className="merge-gate-card"><span className="eyebrow">MERGE GATE</span><h3>{merged ? 'Merged successfully' : approved ? 'Ready for rationale' : 'Review in progress'}</h3><div className="gate-row"><Check size={15} className="ready" /> Checks passing</div><div className="gate-row"><Check size={15} className={reviewReplied ? 'ready' : ''} /> Review response</div><div className="gate-row"><Check size={15} className={approved ? 'ready' : ''} /> Required approval</div><div className="gate-row"><Check size={15} className={rationale.trim().length >= 20 ? 'ready' : ''} /> Merge rationale</div><label htmlFor="merge-rationale">Why is this ready to merge?</label><textarea id="merge-rationale" disabled={!approved || merged} value={rationale} onChange={(event) => setRationale(event.target.value)} placeholder="Summarize the decision, checks, and risk…"/><button className={readyToMerge ? 'merge-button ready-to-merge' : 'merge-button'} disabled={!readyToMerge} onClick={() => mergePullRequest(rationale)}>{merged ? <><Check size={15} /> Merged into main</> : <><Lock size={15} /> Merge pull request</>}</button></aside>
-    </div></article>
-  </div>
+  useEffect(() => { const saved = localStorage.getItem('shiftline-pr-records'); if (saved) setRecords(JSON.parse(saved) as PullRequest[]) }, [])
+  useEffect(() => { localStorage.setItem('shiftline-pr-records', JSON.stringify(records)) }, [records])
+  const learner: PullRequest | null = prOpen ? { id: 482, title: 'Build the usage alerts empty state', branch: 'feat/usage-alerts-empty-state', status: merged ? 'merged' : 'open', reviewers: ['noah', 'devon'], comments: [], updatedAt: 'just now', files: ['alerts-panel.tsx', 'empty-state.tsx'] } : null
+  const all = useMemo(() => learner ? [learner, ...records] : records, [learner, records])
+  const visible = all.filter((pr) => tab === 'open' ? pr.status === 'open' : tab === 'draft' ? pr.status === 'draft' : pr.status === 'closed' || pr.status === 'merged')
+  const selected = all.find((pr) => pr.id === selectedId) || visible[0] || null
+  const update = (id: number, changes: Partial<PullRequest>) => setRecords((items) => items.map((item) => item.id === id ? { ...item, ...changes, updatedAt: 'just now' } : item))
+  const create = () => { const id = Math.max(486, ...records.map((pr) => pr.id)) + 1; setRecords((items) => [{ id, title: 'Untitled change', branch: `draft/change-${id}`, status: 'draft', reviewers: [], comments: [], updatedAt: 'just now', files: ['new-file.tsx'] }, ...items]); setSelectedId(id); setTab('draft') }
+  const addComment = () => { if (!selected || selected.id === 482 || !comment.trim()) return; update(selected.id, { comments: [...selected.comments, { id: Date.now(), author: 'Alex Morgan', text: comment.trim(), createdAt: 'just now' }] }); setComment('') }
+  if (!selected) return <div className="page pulls-page"><section className="page-title"><div><p className="eyebrow">CODE REVIEW</p><h1>Pull requests</h1></div><button className="primary-button" onClick={create}><Plus size={16}/> New pull request</button></section></div>
+  const learnerSelected = selected.id === 482
+  const ready = approved && rationale.trim().length >= 20 && !merged
+  return <div className="page pulls-page live-pr-page">
+    <section className="page-title"><div><p className="eyebrow">CODE REVIEW</p><h1>Pull requests</h1><p>Manage drafts, reviewers, discussion, file changes, and merge decisions.</p></div><button className="primary-button" onClick={create}><Plus size={16}/> New pull request</button></section>
+    <div className="pr-tabs">{(['open','draft','closed'] as const).map((item) => <button key={item} className={tab === item ? 'selected' : ''} onClick={() => setTab(item)}>{item === 'open' ? 'Open' : item === 'draft' ? 'Drafts' : 'Closed'} <b>{all.filter((pr) => item === 'open' ? pr.status === 'open' : item === 'draft' ? pr.status === 'draft' : pr.status === 'closed' || pr.status === 'merged').length}</b></button>)}</div>
+    <div className="live-pr-layout"><aside className="pr-list">{visible.map((pr) => <button key={pr.id} className={pr.id === selected.id ? 'selected-pr' : ''} onClick={() => setSelectedId(pr.id)}><span className="open-dot"/><div><b>#{pr.id} · {labels[pr.status]}</b><strong>{pr.title}</strong><small>{pr.branch} · {pr.updatedAt}</small></div></button>)}{!visible.length && <p>No pull requests in this view.</p>}</aside>
+      <section className="pr-workbench"><header className="pr-workbench-head"><div><span className={`pr-state ${selected.status}`}>{labels[selected.status]}</span>{learnerSelected ? <h2>{selected.title}</h2> : <input value={selected.title} onChange={(event) => update(selected.id, { title: event.target.value })}/>}<p><code>{selected.branch}</code> → <code>main</code> · {selected.files.length} changed files</p></div>{!learnerSelected && <select value={selected.status} onChange={(event) => update(selected.id, { status: event.target.value as Status })}><option value="draft">Draft</option><option value="open">Open</option><option value="closed">Closed</option></select>}</header>
+        <div className="reviewer-strip"><b>Reviewers</b>{['maya','noah','adele','devon','alex'].map((name) => <button key={name} className={selected.reviewers.includes(name) ? 'assigned' : ''} onClick={() => !learnerSelected && update(selected.id, { reviewers: selected.reviewers.includes(name) ? selected.reviewers.filter((item) => item !== name) : [...selected.reviewers, name] })}>{name}</button>)}</div>
+        <div className="diff-panel"><div className="diff-head"><FileDiff size={16}/><b>Files changed</b></div>{selected.files.map((file) => <div className="diff-file" key={file}><span>{file}</span><pre><code className="minus">- action=&#123;&#123; label: 'Review your plan' &#125;&#125;</code><code className="plus">+ action=&#123;canManageBilling ? &#123; label: 'Review your plan' &#125; : undefined&#125;</code></pre></div>)}</div>
+        {learnerSelected ? <div className="learner-review-flow"><section className="review-card"><div className="review-author"><span className="review-avatar">N</span><div><b>Noah Patel <em>{approved ? 'approved' : 'requested changes'}</em></b><small>Tech lead · just now</small></div></div><p>Use the role guard before showing the plan CTA, then explain the validation in your response.</p><button onClick={addressReview} className={reviewAddressed ? 'resolved' : ''}>{reviewAddressed ? <><Check size={14}/> Change addressed</> : 'Mark as addressed'}</button></section><section className="reply-card"><label>Your review response</label><textarea value={response} disabled={!reviewAddressed || reviewReplied} onChange={(event) => setResponse(event.target.value)} placeholder="Explain the change and validation…"/><button className="primary-button" disabled={!reviewAddressed || reviewReplied} onClick={() => replyToReview(response)}><Send size={15}/> {reviewReplied ? 'Response sent' : 'Send response'}</button></section><section className="merge-gate-card"><span className="eyebrow">MERGE GATE</span><div className="gate-row"><Check size={15} className="ready"/> Checks passing</div><div className="gate-row"><Check size={15} className={reviewReplied ? 'ready' : ''}/> Review response</div><div className="gate-row"><Check size={15} className={approved ? 'ready' : ''}/> Required approval</div><label>Merge rationale</label><textarea value={rationale} disabled={!approved || merged} onChange={(event) => setRationale(event.target.value)} placeholder="Document decision and validation…"/><button className={ready ? 'merge-button ready-to-merge' : 'merge-button'} disabled={!ready} onClick={() => mergePullRequest(rationale)}>{merged ? <><Check size={15}/> Merged into main</> : <><Lock size={15}/> Merge pull request</>}</button></section></div> : <div className="comment-panel"><h3><MessageSquare size={16}/> Discussion</h3>{selected.comments.map((item) => <article key={item.id}><b>{item.author}</b><small>{item.createdAt}</small><p>{item.text}</p></article>)}<div className="comment-composer"><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Leave a general review comment…"/><button className="primary-button" onClick={addComment}><Send size={15}/> Comment</button></div></div>}</section>
+    </div></div>
 }

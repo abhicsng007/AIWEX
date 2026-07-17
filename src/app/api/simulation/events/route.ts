@@ -6,6 +6,8 @@ import { deriveWorkflowState, validateWorkflowTransition } from '@/features/simu
 const allowedTypes = new Set<SimulationEventType>([
   'standup_posted', 'checks_passed', 'commit_created', 'pull_request_opened', 'review_addressed',
   'chat_message', 'agent_reply', 'review_reply', 'approval_granted', 'merge_rationale_recorded', 'pull_request_merged',
+  'issue_created', 'issue_updated', 'simulation_time_advanced', 'team_space_created', 'team_space_updated',
+  'chat_message_edited', 'chat_message_deleted',
 ])
 
 export async function GET(request: NextRequest) {

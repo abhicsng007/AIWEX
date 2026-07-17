@@ -10,6 +10,13 @@ export type SimulationEventType =
   | 'approval_granted'
   | 'merge_rationale_recorded'
   | 'pull_request_merged'
+  | 'issue_created'
+  | 'issue_updated'
+  | 'simulation_time_advanced'
+  | 'team_space_created'
+  | 'team_space_updated'
+  | 'chat_message_edited'
+  | 'chat_message_deleted'
 
 export type SimulationEvent = {
   id: string

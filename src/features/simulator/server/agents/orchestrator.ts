@@ -1,10 +1,10 @@
 import type { AgentTurn, OrganizationContext } from '@/features/simulator/domain/agents'
 import { deriveWorkflowState } from '@/features/simulator/domain/workflow'
 import { inMemoryEventStore } from '@/features/simulator/server/event-store'
-import { RuleBasedTeamProvider } from './provider'
+import { createConfiguredTeamProvider } from './provider'
 import { selectAgent } from './registry'
 
-const provider = new RuleBasedTeamProvider()
+const provider = createConfiguredTeamProvider()
 
 export async function createAgentTurn(input: { organizationId: string; channelId: string; userMessage: string }): Promise<AgentTurn> {
   const events = await inMemoryEventStore.list(input.organizationId)
