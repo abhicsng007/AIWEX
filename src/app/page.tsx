@@ -1,5 +1,5 @@
-import SimulatorApp from '@/features/simulator/components/simulator-app'
+import LandingPage from '@/features/landing/landing-page'
 
-export default function SimulatorPage() {
-  return <SimulatorApp />
+export default function Landing() {
+  return <LandingPage />
 }

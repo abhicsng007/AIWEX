@@ -1,30 +1,29 @@
 import { NextRequest } from 'next/server'
+import { simulationRunIdentity } from '@/features/auth/server-auth'
 import { inMemoryEventStore } from '@/features/simulator/server/event-store'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
-  const organizationId = request.nextUrl.searchParams.get('organizationId')
-  if (!organizationId) return new Response('organizationId is required', { status: 400 })
-
+  const identity = await simulationRunIdentity(request, request.nextUrl.searchParams.get('organizationId'))
+  if (!identity) return new Response('Sign in to access this simulation run.', { status: 401 })
   const encoder = new TextEncoder()
   let unsubscribe: () => void = () => {}
   const stream = new ReadableStream({
     async start(controller) {
       const send = (event: string, payload: unknown) => controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`))
-      let existing
-      try { existing = await inMemoryEventStore.list(organizationId) }
+      try { send('snapshot', await inMemoryEventStore.list(identity.runId)) }
       catch (error) {
         const message = error instanceof Error ? error.message : 'The simulation backend could not be initialized.'
-        send('backend-error', { code: 'BACKEND_SCHEMA_UNAVAILABLE', message, action: 'Run supabase/migrations/202607170001_simulator_backend.sql in the Supabase SQL Editor.' })
+        send('backend-error', { code: 'BACKEND_SCHEMA_UNAVAILABLE', message, action: 'Run the simulator migrations before starting a run.' })
         controller.close()
         return
       }
-      send('snapshot', existing)
       unsubscribe = inMemoryEventStore.subscribe((event) => {
-        if (event.organizationId === organizationId) send('simulation-event', event)
+        if (event.organizationId === identity.runId) send('simulation-event', event)
       })
-      const heartbeat = setInterval(() => send('ping', { at: new Date().toISOString() }), 25000)
+      const heartbeat = setInterval(() => send('ping', { at: new Date().toISOString() }), 25_000)
       request.signal.addEventListener('abort', () => { clearInterval(heartbeat); unsubscribe(); controller.close() }, { once: true })
     },
     cancel() { unsubscribe() },

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import '../styles.css'
 
 export const metadata: Metadata = {
-  title: 'Shiftline · AI work simulator',
+  title: 'AIWEX | AI work simulator',
   description: 'A realistic AI-powered work environment for engineering practice.',
 }
 

@@ -1,4 +1,5 @@
 import type { SimulationEvent } from './types'
+import { loadTestResultsFromEvents, meetsPerformanceTarget } from './performance'
 
 export type AssessmentDimension = 'technicalExecution' | 'collaboration' | 'ownershipReliability' | 'processFit'
 export type AssessmentEvidence = { dimension: AssessmentDimension; outcome: 'positive' | 'opportunity'; title: string; detail: string; eventIds: string[] }
@@ -31,7 +32,7 @@ function elapsedMinutes(from?: SimulationEvent, to?: SimulationEvent) {
 
 export function assessSimulation(events: SimulationEvent[]): AssessmentReport {
   const standup = event(events, 'standup_posted')
-  const checks = event(events, 'checks_passed')
+  const checks = events.find((item) => item.type === 'checks_passed' && item.metadata?.verified === true)
   const commit = event(events, 'commit_created')
   const pullRequest = event(events, 'pull_request_opened')
   const reviewAddressed = event(events, 'review_addressed')
@@ -41,28 +42,35 @@ export function assessSimulation(events: SimulationEvent[]): AssessmentReport {
   const merge = event(events, 'pull_request_merged')
   const messages = eventsOf(events, 'chat_message')
   const agentReplies = eventsOf(events, 'agent_reply')
+  const reliabilityPenalties = eventsOf(events, 'reliability_penalty_applied').length
+  const loadTestResults = loadTestResultsFromEvents(events)
+  const latestLoadTest = loadTestResults.at(-1)
+  const targetMet = latestLoadTest ? meetsPerformanceTarget(latestLoadTest) : false
   const averageMessageQuality = messages.length ? messages.reduce((total, item) => total + communicationQuality(messageText(item)), 0) / messages.length : 0
   const reviewQuality = reviewReply ? communicationQuality(responseText(reviewReply)) : 0
   const reviewResponseMinutes = elapsedMinutes(pullRequest, reviewAddressed)
   const reviewWasPrompt = reviewResponseMinutes !== undefined && reviewResponseMinutes <= 60
 
-  const technicalExecution = clamp((checks ? 24 : 0) + (commit ? 17 : 0) + (pullRequest ? 19 : 0) + (approval ? 15 : 0) + (merge ? 25 : 0))
+  const technicalExecution = clamp((checks ? 20 : 0) + (commit ? 14 : 0) + (pullRequest ? 16 : 0) + (approval ? 13 : 0) + (merge ? 20 : 0) + (latestLoadTest ? 8 : 0) + (targetMet ? 9 : 0))
   const collaboration = clamp(18 + Math.min(27, averageMessageQuality) + Math.min(24, reviewQuality) + (messages.some((item) => /@[a-z0-9-]+/i.test(messageText(item))) ? 12 : 0) + (agentReplies.length ? 8 : 0) + (reviewAddressed ? 11 : 0))
-  const ownershipReliability = clamp(20 + (standup ? 20 : 0) + (checks ? 12 : 0) + (commit ? 13 : 0) + (reviewWasPrompt ? 18 : reviewAddressed ? 10 : 0) + (merge ? 17 : 0))
+  const ownershipReliability = clamp(20 + (standup ? 20 : 0) + (checks ? 12 : 0) + (commit ? 13 : 0) + (reviewWasPrompt ? 18 : reviewAddressed ? 10 : 0) + (merge ? 17 : 0) - reliabilityPenalties * 5)
   const processFit = clamp(10 + (standup ? 13 : 0) + (checks ? 15 : 0) + (commit ? 14 : 0) + (pullRequest ? 14 : 0) + (reviewAddressed ? 12 : 0) + (approval ? 10 : 0) + (rationale ? 12 : 0))
   const evidence: AssessmentEvidence[] = []
 
   if (standup) evidence.push({ dimension: 'ownershipReliability', outcome: 'positive', title: 'Visible daily commitment', detail: 'You posted an async stand-up, creating a traceable commitment for your team.', eventIds: [standup.id] })
   else evidence.push({ dimension: 'ownershipReliability', outcome: 'opportunity', title: 'Stand-up is missing', detail: 'No async stand-up is recorded for this simulation. Share your plan before you begin implementation work.', eventIds: [] })
   if (checks && commit) evidence.push({ dimension: 'technicalExecution', outcome: 'positive', title: 'Validated before committing', detail: 'Branch checks were recorded before the feature-branch commit.', eventIds: [checks.id, commit.id] })
-  else evidence.push({ dimension: 'technicalExecution', outcome: 'opportunity', title: 'Technical evidence is incomplete', detail: 'Run the contract checks and create a feature-branch commit to establish a technical execution trail.', eventIds: [checks?.id, commit?.id].filter(Boolean) as string[] })
+  else evidence.push({ dimension: 'technicalExecution', outcome: 'opportunity', title: 'Technical evidence is incomplete', detail: 'Run the server-verified scenario checks and create a feature-branch commit to establish a technical execution trail.', eventIds: [checks?.id, commit?.id].filter(Boolean) as string[] })
+  if (latestLoadTest && targetMet) evidence.push({ dimension: 'technicalExecution', outcome: 'positive', title: 'Performance target verified', detail: `A controlled ${latestLoadTest.concurrency}-user staging run met the latency, error-rate, and throughput targets.`, eventIds: events.filter((item) => item.type === 'load_test_recorded').slice(-1).map((item) => item.id) })
+  else if (latestLoadTest) evidence.push({ dimension: 'technicalExecution', outcome: 'opportunity', title: 'Performance target is not met yet', detail: `Latest controlled staging run: p95 ${latestLoadTest.p95Ms}ms, ${latestLoadTest.errorRatePercent}% errors, ${latestLoadTest.requestsPerSecond} req/s. Review the bottleneck and rerun after the change.`, eventIds: events.filter((item) => item.type === 'load_test_recorded').slice(-1).map((item) => item.id) })
   if (messages.length && averageMessageQuality >= 14) evidence.push({ dimension: 'collaboration', outcome: 'positive', title: 'Context-rich communication', detail: `Your ${messages.length} recorded message${messages.length === 1 ? '' : 's'} included enough context or a directed mention to make collaboration actionable.`, eventIds: messages.map((item) => item.id) })
   else evidence.push({ dimension: 'collaboration', outcome: 'opportunity', title: 'Make communication more actionable', detail: 'Use a mention plus a concrete question, risk, validation detail, or trade-off when you need teammate input.', eventIds: messages.map((item) => item.id) })
   if (reviewReply && reviewQuality >= 14) evidence.push({ dimension: 'collaboration', outcome: 'positive', title: 'Review feedback was addressed in writing', detail: 'Your review response included enough detail to give the reviewer a decision trail.', eventIds: [reviewReply.id] })
   else if (pullRequest) evidence.push({ dimension: 'collaboration', outcome: 'opportunity', title: 'Review response needs evidence', detail: 'Explain what changed and how you validated it before expecting approval.', eventIds: [pullRequest.id, reviewReply?.id].filter(Boolean) as string[] })
   if (rationale && merge) evidence.push({ dimension: 'processFit', outcome: 'positive', title: 'Merge followed the team gate', detail: 'The PR has an approval, a recorded rationale, and a completed merge.', eventIds: [approval?.id, rationale.id, merge.id].filter(Boolean) as string[] })
   else evidence.push({ dimension: 'processFit', outcome: 'opportunity', title: 'Process gate still open', detail: 'Complete the approval and merge-rationale steps to close the change through the organization’s process.', eventIds: [pullRequest?.id, reviewAddressed?.id, approval?.id, rationale?.id].filter(Boolean) as string[] })
+  if (reliabilityPenalties) evidence.push({ dimension: 'ownershipReliability', outcome: 'opportunity', title: 'Deadline reliability deduction', detail: `${reliabilityPenalties} missed-deadline deduction${reliabilityPenalties === 1 ? '' : 's'} applied after the two grace events. Each deduction is 5 points and remains visible in this private report.`, eventIds: eventsOf(events, 'reliability_penalty_applied').map((item) => item.id) })
 
-  const nextStep = !standup ? 'Post your stand-up so the team can see your commitment.' : !messages.length ? 'Ask a teammate one concrete, tagged question before proceeding.' : !checks ? 'Add the required guard and run the branch checks.' : !pullRequest ? 'Open a pull request and invite review.' : !reviewReply ? 'Respond to the review with the change and validation you performed.' : !merge ? 'Record the merge rationale after approval.' : 'Choose the next prioritized work item and make your plan visible.'
+  const nextStep = !standup ? 'Post your stand-up so the team can see your commitment.' : !messages.length ? 'Ask a teammate one concrete, tagged question before proceeding.' : !checks ? 'Add the required guard and run the branch checks.' : !pullRequest ? 'Open a pull request and invite review.' : !reviewReply ? 'Respond to the review with the change and validation you performed.' : !latestLoadTest ? 'Run the assigned controlled staging load test and record the before/after evidence.' : !targetMet ? 'Investigate the latest staging bottleneck, make a focused change, then rerun the controlled load test.' : !merge ? 'Record the merge rationale after approval.' : 'Choose the next prioritized work item and make your plan visible.'
   return { generatedAt: new Date().toISOString(), scores: { technicalExecution, collaboration, ownershipReliability, processFit }, evidence, nextStep, eventCount: events.length }
 }

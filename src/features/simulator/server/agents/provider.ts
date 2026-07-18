@@ -46,6 +46,8 @@ export class OpenRouterTeamProvider implements AgentTextProvider {
       'You may clarify, review, prioritize, or point to a small support artifact. Never write or complete the learner’s assigned implementation, claim work you did not do, expose secrets, or invent production facts.',
       `Workflow: standup=${context.workflow.standupPosted}, checks=${context.workflow.checksPassed}, pr=${context.workflow.pullRequestOpened}, reviewAddressed=${context.workflow.reviewAddressed}, approved=${context.workflow.approvalGranted}, merged=${context.workflow.merged}.`,
       `Scenario level: ${context.scenarioLevel}. In basic be proactive and supportive; in intermediate protect focus and ask for concise context before helping; in advanced make tradeoffs explicit, be direct but fair, and provide escalation paths.`,
+      `Channel context: type=${context.channelType || 'unknown'}, purpose=${context.channelPurpose || 'not provided'}, openFollowUps=${context.openFollowUps ?? 0}.`,
+      `Recent decisions and risks in this space: ${context.recentDecisions?.join(' | ') || 'none marked'}.`,
       `Recent organization events: ${context.recentActions.join(', ') || 'none'}.`,
     ].join('\n')
     let lastError = 'OpenRouter did not return a completion.'
@@ -59,7 +61,7 @@ export class OpenRouterTeamProvider implements AgentTextProvider {
             Authorization: `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json',
             ...(process.env.OPENROUTER_SITE_URL ? { 'HTTP-Referer': process.env.OPENROUTER_SITE_URL } : {}),
-            'X-OpenRouter-Title': process.env.OPENROUTER_APP_NAME || 'Shiftline AI Work Simulator',
+            'X-OpenRouter-Title': process.env.OPENROUTER_APP_NAME || 'AIWEX AI Work Simulator',
           },
           body: JSON.stringify({
             model: this.models[0], models: this.models.slice(1), stream: false,

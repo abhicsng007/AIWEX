@@ -17,14 +17,59 @@ export type SimulationEventType =
   | 'team_space_updated'
   | 'chat_message_edited'
   | 'chat_message_deleted'
+  | 'message_pinned'
+  | 'message_marked_decision'
+  | 'message_marked_risk'
+  | 'message_marked_question'
+  | 'message_marked_handoff'
+  | 'message_marked_blocker'
+  | 'thread_resolved'
+  | 'followup_created'
+  | 'followup_completed'
+  | 'space_archived'
+  | 'space_member_added'
+  | 'space_member_removed'
   | 'scenario_level_selected'
+  | 'task_completed'
+  | 'level_unlocked'
+  | 'onboarding_started'
+  | 'onboarding_profile_confirmed'
+  | 'policy_acknowledged'
+  | 'access_provisioned'
+  | 'training_slide_completed'
+  | 'quiz_attempted'
+  | 'quiz_passed'
+  | 'readiness_task_started'
+  | 'readiness_task_passed'
+  | 'readiness_task_retry_required'
+  | 'readiness_training_resumed'
+  | 'manager_signoff_recorded'
+  | 'schedule_created'
+  | 'schedule_event_completed'
+  | 'deadline_missed'
+  | 'deadline_extension_requested'
+  | 'deadline_extension_approved'
+  | 'reliability_penalty_applied'
+  | 'team_welcome_started'
+  | 'learner_introduction_posted'
+  | 'team_welcome_concluded'
+  | 'load_test_recorded'
+  | 'scenario_deployment_recorded'
+  | 'workspace_revision_saved'
+  | 'agent_task_started'
+  | 'agent_task_completed'
+  | 'agent_blocker_raised'
+  | 'agent_ceremony_scheduled'
+  | 'deadline_extension_decided'
+
+export type SimulationMetadata = Record<string, unknown>
 
 export type SimulationEvent = {
   id: string
   organizationId: string
   type: SimulationEventType
   createdAt: string
-  metadata?: Record<string, string | number | boolean>
+  metadata?: SimulationMetadata
 }
 
 export type WorkflowState = {

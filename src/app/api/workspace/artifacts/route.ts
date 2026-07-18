@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/features/simulator/server/supabase'
+import { simulationRunIdentity } from '@/features/auth/server-auth'
 
 const bucket = 'workspace-artifacts'
 const maxBytes = 20 * 1024 * 1024
@@ -7,8 +8,9 @@ const maxBytes = 20 * 1024 * 1024
 function unavailable() { return NextResponse.json({ error: 'Artifact storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.' }, { status: 503 }) }
 
 export async function GET(request: NextRequest) {
-  const organizationId = request.nextUrl.searchParams.get('organizationId')
-  if (!organizationId) return NextResponse.json({ error: 'organizationId is required' }, { status: 400 })
+  const identity = await simulationRunIdentity(request, request.nextUrl.searchParams.get('organizationId'))
+  if (!identity) return NextResponse.json({ error: 'Sign in to access this workspace.' }, { status: 401 })
+  const organizationId = identity.runId
   const supabase = getSupabaseAdmin()
   if (!supabase) return unavailable()
   const { data, error } = await supabase.from('workspace_artifacts').select('id, object_path, file_name, content_type, byte_size, created_at').eq('organization_id', organizationId).order('created_at', { ascending: false })
@@ -24,9 +26,12 @@ export async function POST(request: NextRequest) {
   const supabase = getSupabaseAdmin()
   if (!supabase) return unavailable()
   const form = await request.formData()
-  const organizationId = form.get('organizationId')
+  const requestedRunId = form.get('organizationId')
   const file = form.get('file')
-  if (typeof organizationId !== 'string' || !organizationId || !(file instanceof File)) return NextResponse.json({ error: 'organizationId and file are required' }, { status: 400 })
+  if (typeof requestedRunId !== 'string' || !(file instanceof File)) return NextResponse.json({ error: 'A simulation run and file are required.' }, { status: 400 })
+  const identity = await simulationRunIdentity(request, requestedRunId)
+  if (!identity) return NextResponse.json({ error: 'Sign in to access this workspace.' }, { status: 401 })
+  const organizationId = identity.runId
   if (file.size === 0) return NextResponse.json({ error: 'Empty files cannot be uploaded' }, { status: 400 })
   if (file.size > maxBytes) return NextResponse.json({ error: 'Files must be 20 MB or smaller' }, { status: 413 })
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-160) || 'artifact'

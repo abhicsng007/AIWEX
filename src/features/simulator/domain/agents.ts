@@ -14,7 +14,7 @@ export type TeamAgent = {
 
 export type AgentTurn = {
   agent: Pick<TeamAgent, 'id' | 'name' | 'role'>
-  action: Extract<AgentActionType, 'post_message'>
+  action: AgentActionType
   channelId: string
   message: string
   dueAt: string
@@ -34,4 +34,8 @@ export type OrganizationContext = {
   }
   recentActions: string[]
   scenarioLevel: 'basic' | 'intermediate' | 'advanced'
+  channelType?: string
+  channelPurpose?: string
+  recentDecisions?: string[]
+  openFollowUps?: number
 }

@@ -1,31 +1,78 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { SimulationEvent, SimulationEventType } from '@/features/simulator/domain/types'
+import type { SimulationEvent, SimulationEventType, SimulationMetadata } from '@/features/simulator/domain/types'
 import FunctionalWorkspaceView from '@/features/simulator/components/functional-workspace-view'
 import FunctionalPullRequestsView from '@/features/simulator/components/functional-pull-requests-view'
 import FunctionalFeedbackView from '@/features/simulator/components/functional-feedback-view'
 import FunctionalIssuesView from '@/features/simulator/components/functional-issues-view'
+import FunctionalOnboardingView from '@/features/simulator/components/functional-onboarding-view'
+import FunctionalCalendarView from '@/features/simulator/components/functional-calendar-view'
 import OrgActivityMap from '@/features/simulator/components/org-activity-map'
 import { agentPortfolios, type AgentPortfolio } from '@/features/simulator/domain/agent-profiles'
 import { seededIssues, type WorkIssue } from '@/features/simulator/domain/issues'
 import { issuesForScenarioLevel, scenarioPolicies, type ScenarioLevel } from '@/features/simulator/domain/difficulty'
+import { deriveScenarioProgression, type ScenarioProgression } from '@/features/simulator/domain/progression'
+import { scenarioWorkspaceFiles, type WorkspaceFile } from '@/features/simulator/domain/workspace'
+import type { ScheduleItem } from '@/features/simulator/domain/onboarding'
 import {
-  ArrowRight, Bell, Bot, Check, ChevronDown, CircleDot, Clock3, Code2,
-  Columns3, FileCode2, GitBranch, Inbox, Layers3, LayoutDashboard, Lock,
-  MessageSquare, MoreHorizontal, Paperclip, Play, Plus, Search, Send,
+  Archive, BadgeCheck,
+  ArrowRight, Bell, Bot, CalendarDays, Check, ChevronDown, CircleDot, Clock3, Code2,
+  Columns3, FileCode2, GitBranch, GraduationCap, Inbox, Layers3, LayoutDashboard, Lock,
+  Flag, Link2, ListChecks, Pin, PinOff,
+  MessageSquare, Moon, MoreHorizontal, Paperclip, Play, Plus, Search, Send, Sun,
   FileText, Pencil, Reply, Settings2, ShieldCheck, Sparkles, TerminalSquare, Trash2, UserPlus, UsersRound, X,
 } from 'lucide-react'
 
-type View = 'home' | 'issues' | 'workspace' | 'pulls' | 'feedback' | 'team-space' | 'agent-profile'
+type View = 'onboarding' | 'home' | 'calendar' | 'issues' | 'workspace' | 'pulls' | 'feedback' | 'team-space' | 'agent-profile'
 type Toast = { message: string; tone?: 'success' | 'warning' } | null
-type TeamSpace = { id: string; name: string; unread: number; description?: string; memberIds?: string[] }
+type SpaceType = 'project' | 'engineering' | 'release' | 'incident' | 'general'
+type MessageTag = 'decision' | 'risk' | 'question' | 'handoff' | 'blocker'
+type FollowUp = { id: string; sourceMessageId: number; title: string; ownerId: string; status: 'open' | 'done'; createdAt: string }
+type TeamSpace = {
+  id: string
+  name: string
+  unread: number
+  description?: string
+  purpose?: string
+  spaceType?: SpaceType
+  ownerId?: string
+  visibility?: 'team' | 'organization' | 'restricted'
+  retentionPolicy?: string
+  linkedIssueIds?: string[]
+  pinnedMessageIds?: number[]
+  requiredMemberIds?: string[]
+  memberIds?: string[]
+  guidelines?: string
+  archived?: boolean
+}
 type TeamAttachment = { name: string; size: number; type: string; path?: string; url?: string; file?: File }
-type TeamMessage = { id: number; spaceId: string; author: string; role: string; initials: string; tone: string; time: string; text: string; link: string; threadId?: number; attachment?: TeamAttachment; edited?: boolean }
+type TeamMessage = { id: number; spaceId: string; author: string; role: string; initials: string; tone: string; time: string; text: string; link: string; threadId?: number; clientMessageId?: string; eventId?: string; attachment?: TeamAttachment; edited?: boolean; tags?: MessageTag[]; pinned?: boolean; acknowledgedBy?: string[]; resolved?: boolean; followUpId?: string }
 type ActivityItem = { id: string; text: string }
 type NotificationItem = { id: string; title: string; detail: string; view: View; spaceId?: string }
 type HomeOverlay = 'none' | 'time' | 'search' | 'notifications' | 'help' | 'organization'
-const organizationId = 'signaldesk-alpha'
+type ThemeMode = 'light' | 'dark' | 'system'
+type WorkspaceValidation = { sourceHash: string; output: string; durationMs: number }
+let latestMessageId = 0
+
+function createMessageId() {
+  latestMessageId = Math.max(Date.now(), latestMessageId + 1)
+  return latestMessageId
+}
+
+function sameTeamMessage(item: TeamMessage, next: Pick<TeamMessage, 'spaceId' | 'author' | 'text'> & { threadId?: number; clientMessageId?: string; eventId?: string }) {
+  if (next.eventId && item.eventId === next.eventId) return true
+  if (next.clientMessageId && item.clientMessageId === next.clientMessageId) return true
+  return item.spaceId === next.spaceId && item.author === next.author && item.text === next.text && (item.threadId || 0) === (next.threadId || 0)
+}
+
+function appendTeamMessage(items: TeamMessage[], next: TeamMessage) {
+  return items.some((item) => sameTeamMessage(item, next)) ? items : [...items, next]
+}
+
+function dedupeTeamMessages(items: TeamMessage[]) {
+  return items.reduce<TeamMessage[]>((unique, item) => appendTeamMessage(unique, item), [])
+}
 
 const avatars: Record<string, string> = {
   maya: 'M', noah: 'N', adele: 'A', marcus: 'M', devon: 'D', you: 'Y',
@@ -39,45 +86,90 @@ const mentionOptions = [
   { id: 'you', username: 'alex', label: 'Alex Morgan', role: 'You', tone: 'blue' },
 ]
 
-const initialMessages = [
-  { id: 1, author: 'Maya Chen', role: 'Product Manager', initials: 'M', tone: 'violet', time: '9:12 AM', text: 'Morning team — we need the usage-alerts experience ready for the Pro plan review. @you, I moved the empty state ticket into this sprint. Please check the acceptance criteria before you start.', link: 'PROJ-184' },
-  { id: 2, author: 'Noah Patel', role: 'Tech Lead', initials: 'N', tone: 'mint', time: '9:18 AM', text: 'A quick heads up: the billing events API is still a little fragile. Don’t assume `threshold` is always present; we have older workspaces in production.', link: '' },
+const tagLabels: Record<MessageTag, string> = {
+  decision: 'Decision',
+  risk: 'Risk',
+  question: 'Question',
+  handoff: 'Handoff',
+  blocker: 'Blocker',
+}
+
+const spaceBlueprints: Record<string, Partial<TeamSpace>> = {
+  'product-usage': {
+    spaceType: 'project', ownerId: 'maya', visibility: 'team', retentionPolicy: 'Project record - retain decisions and handoffs',
+    purpose: 'Coordinate product decisions, sprint risks, and customer-impact tradeoffs for usage alerts.',
+    linkedIssueIds: ['PROJ-184', 'PROJ-191'], pinnedMessageIds: [2], requiredMemberIds: ['maya', 'noah', 'you'],
+    guidelines: 'Use this space for decisions, cross-functional questions, customer-impact context, and sprint handoffs.',
+  },
+  engineering: {
+    spaceType: 'engineering', ownerId: 'noah', visibility: 'team', retentionPolicy: 'Engineering record - retain technical decisions',
+    purpose: 'Discuss implementation constraints, API contracts, validation evidence, and technical blockers.',
+    linkedIssueIds: ['PROJ-176', 'PROJ-184', 'PROJ-189'], pinnedMessageIds: [], requiredMemberIds: ['noah', 'devon', 'you'],
+    guidelines: 'Keep technical assumptions explicit. Use threads for investigation details and mark final calls as decisions.',
+  },
+  releases: {
+    spaceType: 'release', ownerId: 'maya', visibility: 'organization', retentionPolicy: 'Release record - retain rollout decisions',
+    purpose: 'Coordinate launch readiness, approval status, release risk, and rollout communication.',
+    linkedIssueIds: ['PROJ-184'], pinnedMessageIds: [5], requiredMemberIds: ['maya', 'noah', 'you'],
+    guidelines: 'Post only release-relevant updates, risks, approval state, and rollout rationale.',
+  },
+}
+
+function normalizeTeamSpace(space: TeamSpace): TeamSpace {
+  const blueprint = spaceBlueprints[space.id] || {}
+  const requiredMemberIds = space.requiredMemberIds || blueprint.requiredMemberIds || ['you']
+  const memberIds = [...new Set([...(space.memberIds || blueprint.memberIds || ['maya', 'noah', 'devon', 'you']), ...requiredMemberIds])]
+  return {
+    ...space,
+    ...blueprint,
+    ...space,
+    spaceType: space.spaceType || blueprint.spaceType || 'general',
+    ownerId: space.ownerId || blueprint.ownerId || 'maya',
+    visibility: space.visibility || blueprint.visibility || 'team',
+    retentionPolicy: space.retentionPolicy || blueprint.retentionPolicy || 'Working record - retain decisions and follow-ups',
+    purpose: space.purpose || blueprint.purpose || space.description || 'A focused space for decisions, updates, and working context.',
+    linkedIssueIds: space.linkedIssueIds || blueprint.linkedIssueIds || [],
+    pinnedMessageIds: space.pinnedMessageIds || blueprint.pinnedMessageIds || [],
+    requiredMemberIds,
+    memberIds,
+    guidelines: space.guidelines || blueprint.guidelines || 'Keep decisions discoverable, use threads for focused work, and mark follow-ups when ownership is needed.',
+    archived: Boolean(space.archived),
+  }
+}
+
+const initialMessages: Omit<TeamMessage, 'spaceId'>[] = [
+  { id: 1, author: 'Maya Chen', role: 'Product Manager', initials: 'M', tone: 'violet', time: '9:12 AM', text: 'Morning team - we need the usage-alerts experience ready for the Pro plan review. @you, I moved the empty state ticket into this sprint. Please check the acceptance criteria before you start.', link: 'PROJ-184', tags: ['handoff'] },
+  { id: 2, author: 'Noah Patel', role: 'Tech Lead', initials: 'N', tone: 'mint', time: '9:18 AM', text: 'A quick heads up: the billing events API is still fragile. Do not assume `threshold` is always present; we have older workspaces in production.', link: '', tags: ['risk'], pinned: true },
   { id: 3, author: 'Adele Okafor', role: 'Product Designer', initials: 'A', tone: 'orange', time: '9:26 AM', text: 'I dropped annotated states in the handoff doc. The empty state should feel calm, not like an error. Happy to answer questions before you implement.', link: 'Design handoff' },
 ]
 
 const initialSpaces: TeamSpace[] = [
-  { id: 'product-usage', name: 'product-usage', unread: 3, description: 'Coordinate the product-usage initiative, handoffs, and customer-impact decisions.', memberIds: ['maya', 'noah', 'adele', 'devon', 'you'] },
-  { id: 'engineering', name: 'engineering', unread: 0, description: 'Discuss implementation details, system health, and technical decisions.', memberIds: ['maya', 'noah', 'devon', 'you'] },
-  { id: 'releases', name: 'releases', unread: 0, description: 'Coordinate launch risks, release status, and rollout decisions.', memberIds: ['maya', 'noah', 'devon', 'you'] },
+  normalizeTeamSpace({ id: 'product-usage', name: 'product-usage', unread: 3, description: 'Coordinate the product-usage initiative, handoffs, and customer-impact decisions.', memberIds: ['maya', 'noah', 'adele', 'devon', 'you'] }),
+  normalizeTeamSpace({ id: 'engineering', name: 'engineering', unread: 0, description: 'Discuss implementation details, system health, and technical decisions.', memberIds: ['maya', 'noah', 'devon', 'you'] }),
+  normalizeTeamSpace({ id: 'releases', name: 'releases', unread: 0, description: 'Coordinate launch risks, release status, and rollout decisions.', memberIds: ['maya', 'noah', 'devon', 'you'] }),
 ]
 
 const seedMessages: TeamMessage[] = [
   ...initialMessages.map((message) => ({ ...message, spaceId: 'product-usage' })),
-  { id: 4, spaceId: 'engineering', author: 'Devon Reeves', role: 'Peer Engineer', initials: 'D', tone: 'blue', time: '8:47 AM', text: 'I am investigating the dashboard chart tooltip issue. I’ll post an update before lunch.', link: 'PROJ-189' },
-  { id: 5, spaceId: 'releases', author: 'Maya Chen', role: 'Product Manager', initials: 'M', tone: 'violet', time: 'Yesterday', text: 'Sprint 2 scope is locked. Please flag release risks early in this channel.', link: '' },
+  { id: 4, spaceId: 'engineering', author: 'Devon Reeves', role: 'Peer Engineer', initials: 'D', tone: 'blue', time: '8:47 AM', text: 'I am investigating the dashboard chart tooltip issue. I will post an update before lunch.', link: 'PROJ-189', tags: ['handoff'] },
+  { id: 5, spaceId: 'releases', author: 'Maya Chen', role: 'Product Manager', initials: 'M', tone: 'violet', time: 'Yesterday', text: 'Sprint 2 scope is locked. Please flag release risks early in this channel.', link: '', tags: ['decision'], pinned: true },
 ]
 
-const code = `import { EmptyState } from '@/components/empty-state'
-import { BellOff } from 'lucide-react'
+const code = `import { EmptyState } from './empty-state'
 
-type AlertsPanelProps = {
-  alerts: UsageAlert[]
-  workspaceName: string
-}
+type UsageAlert = { id: string; currentUsage: number }
 
-export function AlertsPanel({ alerts, workspaceName }: AlertsPanelProps) {
+/** Intentional learner task: restrict the billing-management link by role. */
+export function AlertsPanel({ alerts }: { alerts: UsageAlert[] }) {
   if (!alerts.length) {
-    return (
-      <EmptyState
-        icon={BellOff}
-        title="No usage alerts yet"
-        description="We'll let you know when your workspace is close to a limit."
-        action={{ label: 'Review your plan', href: '/settings/billing' }}
-      />
-    )
+    return <EmptyState
+      title="No usage alerts yet"
+      description="We'll let you know when your workspace is close to a limit."
+      action={<a href="/settings/billing">Review your plan</a>}
+    />
   }
 
-  return <AlertList alerts={alerts} />
+  return <ul>{alerts.map((alert) => <li key={alert.id}>Usage is {alert.currentUsage}</li>)}</ul>
 }`
 
 function Avatar({ id, tone = 'navy', small = false }: { id: string; tone?: string; small?: boolean }) {
@@ -112,9 +204,12 @@ function ScoreRing({ score, label, accent }: { score: number; label: string; acc
 }
 
 function App() {
+  const [organizationId, setOrganizationId] = useState<string | null>(null)
+  const [runError, setRunError] = useState('')
   const [view, setView] = useState<View>('home')
   const [messages, setMessages] = useState<TeamMessage[]>(seedMessages)
   const [teamSpaces, setTeamSpaces] = useState<TeamSpace[]>(initialSpaces)
+  const [followUps, setFollowUps] = useState<FollowUp[]>([])
   const [selectedSpaceId, setSelectedSpaceId] = useState('product-usage')
   const [newSpaceName, setNewSpaceName] = useState('')
   const [isAddingSpace, setIsAddingSpace] = useState(false)
@@ -132,6 +227,8 @@ function App() {
   const [showCeremony, setShowCeremony] = useState(false)
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [workspaceCode, setWorkspaceCode] = useState(code)
+  const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>(scenarioWorkspaceFiles)
+  const [workspaceValidation, setWorkspaceValidation] = useState<WorkspaceValidation | null>(null)
   const [issues, setIssues] = useState<WorkIssue[]>(seededIssues)
   const [scenarioLevel, setScenarioLevel] = useState<ScenarioLevel>('basic')
   const [liveEvents, setLiveEvents] = useState<SimulationEvent[]>([])
@@ -139,20 +236,119 @@ function App() {
   const [homeOverlay, setHomeOverlay] = useState<HomeOverlay>('none')
   const [searchQuery, setSearchQuery] = useState('')
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([])
+  const [onboardingQualified, setOnboardingQualified] = useState(false)
+  const [calendarSchedule, setCalendarSchedule] = useState<ScheduleItem[]>([])
+  const [calendarSimulationNow, setCalendarSimulationNow] = useState(() => new Date().toISOString())
+  const [themeMode, setThemeMode] = useState<ThemeMode>('system')
+  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light')
   const backendWarningShown = useRef(false)
 
   useEffect(() => {
-    const saved = localStorage.getItem('shiftline-alpha-progress')
+    if (!organizationId) return
+    const saved = localStorage.getItem(`shiftline-progress:${organizationId}`)
     if (saved) {
-      const state = JSON.parse(saved) as { standupDone: boolean; testsPassed: boolean; committed: boolean; prOpen: boolean; reviewAddressed: boolean; reviewReplied?: boolean; approved?: boolean; merged?: boolean; activity: Array<ActivityItem | string>; workspaceCode?: string; messages?: TeamMessage[]; teamSpaces?: TeamSpace[]; selectedSpaceId?: string; issues?: WorkIssue[]; simulationMinutes?: number; readNotificationIds?: string[]; scenarioLevel?: ScenarioLevel }
+      const state = JSON.parse(saved) as { standupDone: boolean; testsPassed: boolean; committed: boolean; prOpen: boolean; reviewAddressed: boolean; reviewReplied?: boolean; approved?: boolean; merged?: boolean; activity: Array<ActivityItem | string>; workspaceCode?: string; messages?: TeamMessage[]; teamSpaces?: TeamSpace[]; followUps?: FollowUp[]; selectedSpaceId?: string; issues?: WorkIssue[]; simulationMinutes?: number; readNotificationIds?: string[]; scenarioLevel?: ScenarioLevel }
       setStandupDone(state.standupDone); setTestsPassed(state.testsPassed); setCommitted(state.committed)
-      setPrOpen(state.prOpen); setReviewAddressed(state.reviewAddressed); setReviewReplied(state.reviewReplied || false); setApproved(state.approved || false); setMerged(state.merged || false); setActivity((state.activity || []).map((item, index) => typeof item === 'string' ? { id: `legacy-${index}-${item}`, text: item } : item)); setWorkspaceCode(state.workspaceCode || code); setMessages(state.messages || seedMessages); setTeamSpaces(state.teamSpaces || initialSpaces); setSelectedSpaceId(state.selectedSpaceId || 'product-usage'); setIssues(state.issues || seededIssues); setSimulationMinutes(state.simulationMinutes || 9 * 60 + 42); setReadNotificationIds(state.readNotificationIds || []); setScenarioLevel(state.scenarioLevel || 'basic')
+      setPrOpen(state.prOpen); setReviewAddressed(state.reviewAddressed); setReviewReplied(state.reviewReplied || false); setApproved(state.approved || false); setMerged(state.merged || false); setActivity((state.activity || []).map((item, index) => typeof item === 'string' ? { id: `legacy-${index}-${item}`, text: item } : item)); setWorkspaceCode(state.workspaceCode || code); setMessages(dedupeTeamMessages(state.messages || seedMessages)); setTeamSpaces((state.teamSpaces || initialSpaces).map(normalizeTeamSpace)); setFollowUps(state.followUps || []); setSelectedSpaceId(state.selectedSpaceId || 'product-usage'); setIssues(state.issues || seededIssues); setSimulationMinutes(state.simulationMinutes || 9 * 60 + 42); setReadNotificationIds(state.readNotificationIds || []); setScenarioLevel(state.scenarioLevel || 'basic')
     }
+  }, [organizationId])
+
+  useEffect(() => {
+    if (!organizationId) return
+    const loadWorkspace = async () => {
+      const response = await fetch(`/api/simulation/workspace?organizationId=${encodeURIComponent(organizationId)}`, { cache: 'no-store' })
+      if (!response.ok) return
+      const data = await response.json() as { files?: WorkspaceFile[] }
+      if (!data.files?.length) return
+      setWorkspaceFiles(data.files)
+      const alertsPanel = data.files.find((file) => file.path === 'app/components/alerts-panel.tsx')
+      if (alertsPanel) setWorkspaceCode(alertsPanel.content)
+    }
+    void loadWorkspace()
+  }, [organizationId])
+
+  useEffect(() => {
+    const loadRun = async () => {
+      try {
+        const response = await fetch('/api/simulation/run', { cache: 'no-store' })
+        const data = await response.json() as { run?: { id?: string }; error?: string }
+        if (!response.ok || !data.run?.id) { setRunError(data.error || 'Your private simulation run could not be loaded.'); return }
+        setOrganizationId(data.run.id)
+      } catch { setRunError('Your private simulation run could not be loaded.') }
+    }
+    void loadRun()
   }, [])
 
   useEffect(() => {
-    localStorage.setItem('shiftline-alpha-progress', JSON.stringify({ standupDone, testsPassed, committed, prOpen, reviewAddressed, reviewReplied, approved, merged, activity, workspaceCode, messages, teamSpaces, selectedSpaceId, issues, simulationMinutes, readNotificationIds, scenarioLevel }))
-  }, [standupDone, testsPassed, committed, prOpen, reviewAddressed, reviewReplied, approved, merged, activity, workspaceCode, messages, teamSpaces, selectedSpaceId, issues, simulationMinutes, readNotificationIds, scenarioLevel])
+    const savedTheme = localStorage.getItem('aiwex-theme') as ThemeMode | null
+    if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system') setThemeMode(savedTheme)
+  }, [])
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const applyTheme = () => {
+      const resolved = themeMode === 'system' ? (media.matches ? 'dark' : 'light') : themeMode
+      document.documentElement.dataset.theme = resolved
+      setResolvedTheme(resolved)
+    }
+    applyTheme()
+    if (themeMode === 'system') media.addEventListener('change', applyTheme)
+    localStorage.setItem('aiwex-theme', themeMode)
+    return () => media.removeEventListener('change', applyTheme)
+  }, [themeMode])
+
+  useEffect(() => {
+    if (!organizationId) return
+    const loadOnboarding = async () => {
+      try {
+        const response = await fetch(`/api/simulation/onboarding?organizationId=${encodeURIComponent(organizationId)}`, { cache: 'no-store' })
+        if (!response.ok) return
+        const data = await response.json() as { state: { phase: string } }
+        const qualified = data.state.phase === 'qualified'
+        setOnboardingQualified(qualified)
+        if (!qualified) setView('onboarding')
+      } catch { /* The existing backend warning will surface if persistence is unavailable. */ }
+    }
+    void loadOnboarding()
+  }, [organizationId])
+
+  useEffect(() => {
+    if (!onboardingQualified || !organizationId) return
+    const checkDeadlines = () => {
+      void fetch('/api/simulation/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationId, action: 'check_deadlines' }),
+      })
+    }
+    checkDeadlines()
+    const timer = window.setInterval(checkDeadlines, 60_000)
+    return () => window.clearInterval(timer)
+  }, [onboardingQualified, organizationId])
+
+  useEffect(() => {
+    if (!onboardingQualified || !organizationId) {
+      setCalendarSchedule([])
+      return
+    }
+    const loadCalendar = async () => {
+      try {
+        const response = await fetch('/api/simulation/schedule?organizationId=' + encodeURIComponent(organizationId), { cache: 'no-store' })
+        if (!response.ok) return
+        const data = await response.json() as { schedule?: ScheduleItem[]; simulationNow?: string }
+        setCalendarSchedule(data.schedule || [])
+        if (data.simulationNow) setCalendarSimulationNow(data.simulationNow)
+      } catch { /* The schedule remains available again on the next refresh. */ }
+    }
+    void loadCalendar()
+    const timer = window.setInterval(() => { void loadCalendar() }, 30_000)
+    return () => window.clearInterval(timer)
+  }, [onboardingQualified, organizationId])
+
+  useEffect(() => {
+    if (!organizationId) return
+    localStorage.setItem(`shiftline-progress:${organizationId}`, JSON.stringify({ standupDone, testsPassed, committed, prOpen, reviewAddressed, reviewReplied, approved, merged, activity, workspaceCode, messages, teamSpaces, followUps, selectedSpaceId, issues, simulationMinutes, readNotificationIds, scenarioLevel }))
+  }, [organizationId, standupDone, testsPassed, committed, prOpen, reviewAddressed, reviewReplied, approved, merged, activity, workspaceCode, messages, teamSpaces, followUps, selectedSpaceId, issues, simulationMinutes, readNotificationIds, scenarioLevel])
 
   useEffect(() => {
     const ingest = (event: SimulationEvent) => {
@@ -160,42 +356,107 @@ function App() {
       const metadata = event.metadata || {}
       const channelId = typeof metadata.channelId === 'string' ? metadata.channelId : ''
       const text = typeof metadata.message === 'string' ? metadata.message : ''
+      const clientMessageId = typeof metadata.clientMessageId === 'string' ? metadata.clientMessageId : undefined
+      const threadId = typeof metadata.threadId === 'number' ? metadata.threadId : typeof metadata.threadId === 'string' && metadata.threadId ? Number(metadata.threadId) : undefined
       if (event.type === 'chat_message' && channelId && text) {
         const attachment = typeof metadata.attachmentName === 'string' ? { name: metadata.attachmentName, size: Number(metadata.attachmentSize || 0), type: String(metadata.attachmentType || 'file'), path: typeof metadata.attachmentPath === 'string' ? metadata.attachmentPath : undefined } : undefined
-        setMessages((items) => items.some((item) => item.spaceId === channelId && item.author === 'You' && item.text === text) ? items : [...items, { id: Date.parse(event.createdAt), spaceId: channelId, author: 'You', role: 'Full-stack Engineer', initials: 'Y', tone: 'blue', time: 'now', text, link: '', attachment }])
+        setMessages((items) => appendTeamMessage(items, { id: clientMessageId ? Number(clientMessageId) : Date.parse(event.createdAt), spaceId: channelId, author: 'You', role: 'Full-stack Engineer', initials: 'Y', tone: 'blue', time: 'now', text: text === '(attachment)' ? '' : text, link: '', threadId, clientMessageId, eventId: event.id, attachment }))
       }
       if (event.type === 'agent_reply' && channelId && text) {
         const agentId = typeof metadata.agentId === 'string' ? metadata.agentId : 'noah'
         const agent = agentPortfolios[agentId] || agentPortfolios.noah
-        setMessages((items) => items.some((item) => item.spaceId === channelId && item.author === agent.name && item.text === text) ? items : [...items, { id: Date.parse(event.createdAt) + 1, spaceId: channelId, author: agent.name, role: agent.role, initials: agent.initials, tone: agent.tone, time: 'now', text, link: '' }])
+        setMessages((items) => appendTeamMessage(items, { id: Date.parse(event.createdAt) + 1, spaceId: channelId, author: agent.name, role: agent.role, initials: agent.initials, tone: agent.tone, time: 'now', text, link: '', threadId, eventId: event.id }))
       }
+      const revisionPath = typeof metadata.path === 'string' ? metadata.path : null
+      const revisionContent = typeof metadata.content === 'string' ? metadata.content : null
+      if (event.type === 'workspace_revision_saved' && revisionPath === 'app/components/alerts-panel.tsx' && revisionContent !== null) {
+        setWorkspaceCode(revisionContent)
+      }
+      if (event.type === 'workspace_revision_saved' && revisionPath && revisionContent !== null) {
+        setWorkspaceFiles((files) => files.map((file) => file.path === revisionPath ? { ...file, content: revisionContent, updatedAt: event.createdAt, revisionId: event.id } : file))
+      }
+      if (event.type === 'standup_posted') setStandupDone(true)
+      if (event.type === 'checks_passed') setTestsPassed(true)
+      if (event.type === 'commit_created') setCommitted(true)
+      if (event.type === 'pull_request_opened') setPrOpen(true)
+      if (event.type === 'review_addressed') setReviewAddressed(true)
+      if (event.type === 'review_reply') setReviewReplied(true)
+      if (event.type === 'approval_granted') setApproved(true)
+      if (event.type === 'pull_request_merged') setMerged(true)
+      if (event.type === 'simulation_time_advanced' && typeof metadata.to === 'number') setSimulationMinutes(metadata.to)
+      if (event.type === 'scenario_level_selected' && (metadata.level === 'basic' || metadata.level === 'intermediate' || metadata.level === 'advanced')) setScenarioLevel(metadata.level)
       if (event.type === 'team_space_created' && typeof metadata.spaceId === 'string' && typeof metadata.name === 'string') {
-        setTeamSpaces((spaces) => spaces.some((space) => space.id === metadata.spaceId) ? spaces : [...spaces, { id: metadata.spaceId as string, name: metadata.name as string, unread: 1, description: 'A focused space for decisions, updates, and working context.', memberIds: ['maya', 'noah', 'devon', 'you'] }])
+        setTeamSpaces((spaces) => spaces.some((space) => space.id === metadata.spaceId) ? spaces : [...spaces, normalizeTeamSpace({ id: metadata.spaceId as string, name: metadata.name as string, unread: 1, description: 'A focused space for decisions, updates, and working context.', memberIds: ['maya', 'noah', 'devon', 'you'] })])
       }
       if (event.type === 'team_space_updated' && typeof metadata.spaceId === 'string' && typeof metadata.name === 'string') setTeamSpaces((spaces) => spaces.map((space) => space.id === metadata.spaceId ? { ...space, name: metadata.name as string } : space))
+      const eventSpace = metadata.space
+      if ((event.type === 'team_space_created' || event.type === 'team_space_updated') && eventSpace && typeof eventSpace === 'object' && typeof (eventSpace as { id?: unknown }).id === 'string' && typeof (eventSpace as { name?: unknown }).name === 'string') {
+        const normalized = normalizeTeamSpace(eventSpace as TeamSpace)
+        setTeamSpaces((spaces) => event.type === 'team_space_created' ? spaces.some((space) => space.id === normalized.id) ? spaces : [...spaces, normalized] : spaces.map((space) => space.id === normalized.id ? normalized : space))
+      }
+      const eventIssue = metadata.issue
+      if ((event.type === 'issue_created' || event.type === 'issue_updated') && eventIssue && typeof eventIssue === 'object' && typeof (eventIssue as { id?: unknown }).id === 'string') {
+        const issue = eventIssue as WorkIssue
+        setIssues((items) => event.type === 'issue_created' ? items.some((item) => item.id === issue.id) ? items : [...items, issue] : items.map((item) => item.id === issue.id ? issue : item))
+      }
+      const eventFollowUp = metadata.followUp
+      if (event.type === 'followup_created' && eventFollowUp && typeof eventFollowUp === 'object' && typeof (eventFollowUp as { id?: unknown }).id === 'string') {
+        const followUp = eventFollowUp as FollowUp
+        setFollowUps((items) => items.some((item) => item.id === followUp.id) ? items : [...items, followUp])
+      }
+      if (event.type === 'followup_completed' && typeof metadata.followUpId === 'string') setFollowUps((items) => items.map((item) => item.id === metadata.followUpId ? { ...item, status: 'done' } : item))
     }
-    const source = new EventSource(`/api/simulation/events/stream?organizationId=${organizationId}`)
+    if (!organizationId) return
+    const source = new EventSource(`/api/simulation/events/stream?organizationId=${encodeURIComponent(organizationId)}`)
     source.addEventListener('snapshot', (message) => { const events = JSON.parse((message as MessageEvent<string>).data) as SimulationEvent[]; events.forEach(ingest) })
     source.addEventListener('simulation-event', (message) => ingest(JSON.parse((message as MessageEvent<string>).data) as SimulationEvent))
     source.addEventListener('backend-error', () => notify('Supabase schema is not ready. Run the simulator migration, then restart the dev server.', 'warning'))
-    return () => source.close()
-  }, [])
+    const refreshFromLedger = async () => {
+      const response = await fetch(`/api/simulation/events?organizationId=${encodeURIComponent(organizationId)}`, { cache: 'no-store' })
+      if (!response.ok) return
+      const data = await response.json() as { events?: SimulationEvent[] }
+      data.events?.forEach(ingest)
+    }
+    const ledgerTimer = window.setInterval(() => { void refreshFromLedger() }, 15_000)
+    return () => { source.close(); window.clearInterval(ledgerTimer) }
+  }, [organizationId])
 
   useEffect(() => {
     const pulse = async () => {
+      if (!organizationId) return
       const response = await fetch('/api/simulation/pulse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId }) })
       if (response.status === 503 && !backendWarningShown.current) { backendWarningShown.current = true; notify('Supabase schema is not ready. Run the simulator migration, then restart the dev server.', 'warning') }
     }
     pulse()
     const timer = window.setInterval(pulse, 20000)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [organizationId])
 
   const progress = useMemo(() => [standupDone, testsPassed, committed, prOpen, reviewAddressed].filter(Boolean).length, [standupDone, testsPassed, committed, prOpen, reviewAddressed])
+  const scenarioProgression = useMemo(() => deriveScenarioProgression(liveEvents), [liveEvents])
   const selectedSpace = teamSpaces.find((space) => space.id === selectedSpaceId) || teamSpaces[0]
-  const activeMessages = messages.filter((message) => message.spaceId === selectedSpaceId)
+  const activeMessages = useMemo(() => dedupeTeamMessages(messages.filter((message) => message.spaceId === selectedSpaceId)), [messages, selectedSpaceId])
   const selectedAgent = agentPortfolios[selectedAgentId] || agentPortfolios.noah
+  const scheduleNotifications = useMemo<NotificationItem[]>(() => {
+    const now = Date.parse(calendarSimulationNow)
+    const currentTime = Number.isFinite(now) ? now : Date.now()
+    return calendarSchedule
+      .filter((item) => !item.completed)
+      .map((item) => {
+        if (item.missed) return { id: 'calendar-missed-' + item.id, title: 'Missed: ' + item.title, detail: 'Open Calendar to record and communicate the recovery plan.', view: 'calendar' as View, priority: 0 }
+        const startsAt = Date.parse(item.startsAt)
+        const endsAt = Date.parse(item.endsAt)
+        const minutesUntil = Math.ceil((startsAt - currentTime) / 60_000)
+        if (currentTime >= startsAt && currentTime <= endsAt) return { id: 'calendar-now-' + item.id, title: 'Now: ' + item.title, detail: 'This scheduled work block is in progress.', view: 'calendar' as View, priority: 1 }
+        if (minutesUntil > 0 && minutesUntil <= 30) return { id: 'calendar-soon-' + item.id, title: item.title + ' starts soon', detail: 'Starts in ' + minutesUntil + ' min. Open Calendar for context and actions.', view: 'calendar' as View, priority: 2 }
+        return null
+      })
+      .filter((item): item is NotificationItem & { priority: number } => Boolean(item))
+      .sort((left, right) => left.priority - right.priority)
+      .map(({ priority: _priority, ...item }) => item)
+  }, [calendarSchedule, calendarSimulationNow])
   const notifications = useMemo<NotificationItem[]>(() => [
+    ...scheduleNotifications,
     !standupDone ? { id: 'standup-due', title: 'Async stand-up is due', detail: 'Share your plan before implementation.', view: 'home' } : null,
     !testsPassed && standupDone ? { id: 'branch-checks', title: 'Branch checks are your next gate', detail: 'Implement the guard and run CI before committing.', view: 'workspace' } : null,
     testsPassed && !committed ? { id: 'commit-ready', title: 'Your branch is ready to commit', detail: 'Capture the verified implementation on your feature branch.', view: 'workspace' } : null,
@@ -204,14 +465,15 @@ function App() {
     prOpen && reviewAddressed && !approved ? { id: 'review-response', title: 'Explain the review update', detail: 'Your reviewer needs a clear response before approval.', view: 'pulls' } : null,
     ...teamSpaces.filter((space) => space.unread > 0).map((space) => ({ id: `unread-${space.id}`, title: `New activity in #${space.name}`, detail: `${space.unread} unread team update${space.unread === 1 ? '' : 's'}.`, view: 'team-space' as View, spaceId: space.id })),
     ...activity.slice(0, 4).map((item) => ({ id: `activity-${item.id}`, title: 'Your simulation activity', detail: item.text, view: 'feedback' as View })),
-  ].filter(Boolean) as NotificationItem[], [standupDone, testsPassed, committed, prOpen, reviewAddressed, approved, teamSpaces, activity])
+  ].filter(Boolean) as NotificationItem[], [scheduleNotifications, standupDone, testsPassed, committed, prOpen, reviewAddressed, approved, teamSpaces, activity])
   const unreadNotifications = notifications.filter((item) => !readNotificationIds.includes(item.id)).length
   const activeChallenges = liveEvents.filter((event) => event.type === 'agent_reply' && typeof event.metadata?.severity === 'string').slice(-2)
   const notify = (message: string, tone: 'success' | 'warning' = 'success') => {
     setToast({ message, tone }); window.setTimeout(() => setToast(null), 3200)
   }
   const log = (text: string) => setActivity((items) => [{ id: crypto.randomUUID(), text }, ...items].slice(0, 8))
-  const recordSimulationEvent = async (type: SimulationEventType, metadata?: Record<string, string | boolean | number>) => {
+  const recordSimulationEvent = async (type: SimulationEventType, metadata?: SimulationMetadata) => {
+    if (!organizationId) { notify('Your simulation run is still loading.', 'warning'); return false }
     const response = await fetch('/api/simulation/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId, type, metadata }) })
     if (!response.ok) {
       const result = await response.json() as { error?: string }
@@ -221,7 +483,10 @@ function App() {
     return true
   }
   const requestAgentTurn = async (channelId: string, userMessage: string) => {
-    const response = await fetch('/api/simulation/agent-turns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId, channelId, userMessage }) })
+    const channel = teamSpaces.find((space) => space.id === channelId)
+    const recentDecisions = messages.filter((message) => message.spaceId === channelId && message.tags?.some((tag) => ['decision', 'risk', 'blocker'].includes(tag))).slice(-4).map((message) => message.text.slice(0, 120))
+    const openFollowUps = followUps.filter((item) => item.status === 'open' && messages.some((message) => message.spaceId === channelId && message.id === item.sourceMessageId)).length
+    const response = await fetch('/api/simulation/agent-turns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId, channelId, userMessage, channelType: channel?.spaceType, channelPurpose: channel?.purpose || channel?.description, recentDecisions, openFollowUps }) })
     if (!response.ok) {
       notify('Your teammates could not respond right now. Try again in a moment.', 'warning')
       return null
@@ -231,15 +496,24 @@ function App() {
   const createIssue = (draft: Omit<WorkIssue, 'id' | 'updatedAt'>) => {
     const nextNumber = Math.max(200, ...issues.map((issue) => Number(issue.id.replace('PROJ-', '')) + 1))
     const issue: WorkIssue = { ...draft, id: `PROJ-${nextNumber}`, updatedAt: 'just now' }
-    setIssues((items) => [...items, issue]); log(`Created ${issue.id}: ${issue.title}`); void recordSimulationEvent('issue_created', { issueId: issue.id, title: issue.title })
+    setIssues((items) => [...items, issue]); log(`Created ${issue.id}: ${issue.title}`); void recordSimulationEvent('issue_created', { issueId: issue.id, title: issue.title, issue })
   }
-  const updateIssue = (issue: WorkIssue) => {
-    setIssues((items) => items.map((item) => item.id === issue.id ? issue : item)); log(`Updated ${issue.id}: ${issue.title}`); void recordSimulationEvent('issue_updated', { issueId: issue.id, status: issue.status, priority: issue.priority })
+  const updateIssue = async (issue: WorkIssue) => {
+    const previous = issues.find((item) => item.id === issue.id)
+    if (issue.status === 'done' && previous?.status !== 'done' && issue.assignee === 'alex') {
+      if (!await recordSimulationEvent('task_completed', { issueId: issue.id, level: scenarioLevel })) return
+      log(`Completed ${issue.id} through the ${scenarioPolicies[scenarioLevel].label} merge gate`)
+    }
+    setIssues((items) => items.map((item) => item.id === issue.id ? issue : item)); log(`Updated ${issue.id}: ${issue.title}`); void recordSimulationEvent('issue_updated', { issueId: issue.id, status: issue.status, priority: issue.priority, assignee: issue.assignee, level: scenarioLevel, issue })
   }
   const selectScenarioLevel = async (level: ScenarioLevel) => {
-    if (progress > 0 && level !== scenarioLevel) return notify('Difficulty is locked after work begins. Finish this scenario or start a fresh organization to change levels.', 'warning')
     if (!await recordSimulationEvent('scenario_level_selected', { level })) return
-    setScenarioLevel(level); setIssues(issuesForScenarioLevel(level)); log(`Started the ${scenarioPolicies[level].label} scenario`); notify(`${scenarioPolicies[level].label} level is active. The scenario will pace its next challenge from your work state.`)
+    setScenarioLevel(level)
+    setIssues((current) => issuesForScenarioLevel(level).map((nextIssue) => {
+      const existing = current.find((item) => item.id === nextIssue.id)
+      return existing ? { ...nextIssue, status: existing.status, updatedAt: existing.updatedAt } : nextIssue
+    }))
+    log(`Started the ${scenarioPolicies[level].label} scenario`); notify(`${scenarioPolicies[level].label} level is active. The scenario will pace its next challenge from your work state.`)
   }
   const advanceSimulationTime = async (minutes: number) => {
     if (minutes <= 0) return
@@ -250,12 +524,12 @@ function App() {
     const formatTime = (value: number) => `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`
     log(`Advanced simulated time from ${formatTime(from)} to ${formatTime(next)}`)
     if (from < 10 * 60 && next >= 10 * 60 && !standupDone) {
-      setMessages((items) => [...items, { id: Date.now(), spaceId: 'product-usage', author: 'Maya Chen', role: 'Product Manager', initials: 'M', tone: 'violet', time: '10:00 AM', text: '@alex, quick reminder: please post your stand-up before you begin implementation so dependencies are visible.', link: '' }])
+      setMessages((items) => [...items, { id: createMessageId(), spaceId: 'product-usage', author: 'Maya Chen', role: 'Product Manager', initials: 'M', tone: 'violet', time: '10:00 AM', text: '@alex, quick reminder: please post your stand-up before you begin implementation so dependencies are visible.', link: '' }])
       setTeamSpaces((spaces) => spaces.map((space) => space.id === 'product-usage' ? { ...space, unread: selectedSpaceId === 'product-usage' ? 0 : space.unread + 1 } : space))
       log('Maya followed up on the overdue stand-up')
     }
     if (from < 11 * 60 && next >= 11 * 60) {
-      setMessages((items) => [...items, { id: Date.now() + 1, spaceId: 'releases', author: 'Maya Chen', role: 'Product Manager', initials: 'M', tone: 'violet', time: '11:00 AM', text: 'Stakeholder check-in moved to 3 PM. Please flag anything that could put the usage-alerts scope at risk.', link: 'PROJ-184' }])
+      setMessages((items) => [...items, { id: createMessageId(), spaceId: 'releases', author: 'Maya Chen', role: 'Product Manager', initials: 'M', tone: 'violet', time: '11:00 AM', text: 'Stakeholder check-in moved to 3 PM. Please flag anything that could put the usage-alerts scope at risk.', link: 'PROJ-184' }])
       setTeamSpaces((spaces) => spaces.map((space) => space.id === 'releases' ? { ...space, unread: selectedSpaceId === 'releases' ? 0 : space.unread + 1 } : space))
       log('Maya posted a release-risk check-in')
     }
@@ -272,13 +546,29 @@ function App() {
   const runTests = async () => {
     if (!workspaceCode.includes('canManageBilling')) {
       log('CI blocked: billing role guard is missing')
-      return notify('Check failed: protect the billing CTA with canManageBilling before rerunning CI.', 'warning')
+      setTestsPassed(false)
     }
-    if (!await recordSimulationEvent('checks_passed')) return
-    setTestsPassed(true); log('CI test suite passed'); notify('12 checks passed — your branch is ready to commit.')
+    setWorkspaceValidation(null)
+    try {
+      if (!await saveWorkspaceFile('app/components/alerts-panel.tsx')) return false
+      const response = await fetch('/api/workspace/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId, source: workspaceCode }) })
+      const result = await response.json() as { passed?: boolean; sourceHash?: string; output?: string; durationMs?: number; error?: string }
+      setWorkspaceValidation({ sourceHash: result.sourceHash || '', output: result.output || result.error || 'Scenario validation failed.', durationMs: result.durationMs || 0 })
+      if (!response.ok || !result.passed) {
+        setTestsPassed(false); log('Scenario checks failed against the submitted source')
+        notify('Scenario checks failed. Read the terminal output and fix the implementation.', 'warning')
+        return false
+      }
+      setTestsPassed(true); log('Server verified the scenario test suite'); notify('Scenario checks passed against your submitted source. You can commit this version.')
+      return true
+    } catch {
+      setTestsPassed(false); setWorkspaceValidation({ sourceHash: '', output: 'The isolated scenario runner could not be reached.', durationMs: 0 })
+      notify('The scenario runner is unavailable. Try again in a moment.', 'warning')
+      return false
+    }
   }
   const commit = async () => {
-    if (!testsPassed) return notify('Run the test suite before creating a commit.', 'warning')
+    if (!testsPassed || !workspaceValidation) return notify('Run the verified scenario checks before creating a commit.', 'warning')
     if (!await recordSimulationEvent('commit_created')) return
     setCommitted(true); log('Committed changes on feat/usage-alerts-empty-state'); notify('Commit created on your feature branch.')
   }
@@ -287,7 +577,26 @@ function App() {
     if (!await recordSimulationEvent('pull_request_opened')) return
     setPrOpen(true); log('Opened PR #482 for review'); notify('PR #482 opened. Noah and Devon were requested for review.')
   }
+  const updateWorkspaceFile = (path: string, content: string) => {
+    setWorkspaceFiles((files) => files.map((file) => file.path === path ? { ...file, content } : file))
+    if (path === 'app/components/alerts-panel.tsx') setWorkspaceCode(content)
+    setTestsPassed(false)
+    setWorkspaceValidation(null)
+  }
+  const saveWorkspaceFile = async (path: string) => {
+    if (!organizationId) return false
+    const file = workspaceFiles.find((item) => item.path === path)
+    if (!file) return false
+    const response = await fetch('/api/simulation/workspace', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId, path, content: file.content, baseRevisionId: file.revisionId }) })
+    const result = await response.json() as { file?: WorkspaceFile; error?: string }
+    if (!response.ok || !result.file) { notify(result.error || 'The workspace revision could not be saved.', 'warning'); return false }
+    setWorkspaceFiles((files) => files.map((item) => item.path === path ? result.file! : item))
+    if (path === 'app/components/alerts-panel.tsx') setWorkspaceCode(result.file.content)
+    log(`Saved ${path} to the shared workspace record`)
+    return true
+  }
   const selectTeamSpace = (spaceId: string) => {
+    if (!onboardingQualified) return notify('Complete onboarding and the readiness task before joining Team Spaces.', 'warning')
     setSelectedSpaceId(spaceId)
     setTeamSpaces((spaces) => spaces.map((space) => space.id === spaceId ? { ...space, unread: 0 } : space))
     setView('team-space')
@@ -298,19 +607,74 @@ function App() {
     setView('agent-profile')
   }
   const addTeamSpace = () => {
+    if (!onboardingQualified) return notify('Team Spaces unlock after onboarding.', 'warning')
     const name = newSpaceName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
     if (!name) return notify('Give the new team space a name.', 'warning')
     if (teamSpaces.some((space) => space.name === name)) return notify('A team space with that name already exists.', 'warning')
-    const space: TeamSpace = { id: `space-${Date.now()}`, name, unread: 0, description: 'A focused space for decisions, updates, and working context.', memberIds: ['maya', 'noah', 'devon', 'you'] }
-    setTeamSpaces((spaces) => [...spaces, space]); setMessages((items) => [...items, { id: Date.now(), spaceId: space.id, author: 'Maya Chen', role: 'Product Manager', initials: 'M', tone: 'violet', time: 'now', text: `Welcome to #${name}. Use this space to keep the team’s decisions visible.`, link: '' }]); void recordSimulationEvent('team_space_created', { spaceId: space.id, name }); setNewSpaceName(''); setIsAddingSpace(false); selectTeamSpace(space.id); log(`Created #${name}`); notify(`Created #${name}.`)
+    const space = normalizeTeamSpace({ id: `space-${Date.now()}`, name, unread: 0, description: 'A focused space for decisions, updates, and working context.', memberIds: ['maya', 'noah', 'devon', 'you'] })
+    setTeamSpaces((spaces) => [...spaces, space]); setMessages((items) => [...items, { id: createMessageId(), spaceId: space.id, author: 'Maya Chen', role: 'Product Manager', initials: 'M', tone: 'violet', time: 'now', text: `Welcome to #${name}. Use this space to keep team decisions visible.`, link: '', tags: ['handoff'] }]); void recordSimulationEvent('team_space_created', { spaceId: space.id, name, spaceType: space.spaceType || 'general', space }); setNewSpaceName(''); setIsAddingSpace(false); selectTeamSpace(space.id); log(`Created #${name}`); notify(`Created #${name}.`)
   }
   const updateTeamSpace = (nextSpace: TeamSpace) => {
+    if (!onboardingQualified) return notify('Team Spaces unlock after onboarding.', 'warning')
     const name = nextSpace.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
     if (!name) return notify('A team space needs a valid name.', 'warning')
     if (teamSpaces.some((space) => space.id !== nextSpace.id && space.name === name)) return notify('A team space with that name already exists.', 'warning')
-    const normalized = { ...nextSpace, name }
+    const previous = teamSpaces.find((space) => space.id === nextSpace.id)
+    const normalized = normalizeTeamSpace({ ...nextSpace, name })
     setTeamSpaces((spaces) => spaces.map((space) => space.id === normalized.id ? normalized : space))
-    log(`Updated #${normalized.name}`); void recordSimulationEvent('team_space_updated', { spaceId: normalized.id, name: normalized.name, memberCount: normalized.memberIds?.length || 0 }); notify(`Saved #${normalized.name}.`)
+    const added = (normalized.memberIds || []).filter((id) => !(previous?.memberIds || []).includes(id))
+    const removed = (previous?.memberIds || []).filter((id) => !(normalized.memberIds || []).includes(id))
+    added.forEach((memberId) => void recordSimulationEvent('space_member_added', { spaceId: normalized.id, memberId }))
+    removed.forEach((memberId) => void recordSimulationEvent('space_member_removed', { spaceId: normalized.id, memberId }))
+    log(`Updated #${normalized.name}`); void recordSimulationEvent('team_space_updated', { spaceId: normalized.id, name: normalized.name, memberCount: normalized.memberIds?.length || 0, space: normalized }); notify(`Saved #${normalized.name}.`)
+  }
+  const togglePinMessage = (id: number) => {
+    const message = messages.find((item) => item.id === id)
+    if (!message) return
+    const nextPinned = !message.pinned
+    setMessages((items) => items.map((item) => item.id === id ? { ...item, pinned: nextPinned } : item))
+    setTeamSpaces((spaces) => spaces.map((space) => space.id === message.spaceId ? { ...space, pinnedMessageIds: nextPinned ? [...new Set([...(space.pinnedMessageIds || []), id])] : (space.pinnedMessageIds || []).filter((item) => item !== id) } : space))
+    void recordSimulationEvent('message_pinned', { messageId: id, spaceId: message.spaceId, pinned: nextPinned })
+    log(`${nextPinned ? 'Pinned' : 'Unpinned'} a team message`); notify(nextPinned ? 'Message pinned to space context.' : 'Message removed from pinned context.')
+  }
+  const markMessage = (id: number, tag: MessageTag) => {
+    const message = messages.find((item) => item.id === id)
+    if (!message) return
+    const tags = message.tags?.includes(tag) ? message.tags : [...(message.tags || []), tag]
+    setMessages((items) => items.map((item) => item.id === id ? { ...item, tags } : item))
+    const eventType = tag === 'decision' ? 'message_marked_decision' : tag === 'risk' ? 'message_marked_risk' : tag === 'question' ? 'message_marked_question' : tag === 'handoff' ? 'message_marked_handoff' : 'message_marked_blocker'
+    void recordSimulationEvent(eventType, { messageId: id, spaceId: message.spaceId, tag })
+    log(`Marked message as ${tagLabels[tag].toLowerCase()}`); notify(`Marked as ${tagLabels[tag].toLowerCase()}.`)
+  }
+  const createFollowUp = (id: number) => {
+    const message = messages.find((item) => item.id === id)
+    if (!message) return
+    const followUp: FollowUp = { id: `fu-${Date.now()}`, sourceMessageId: id, title: message.link ? `${message.link}: follow-up` : message.text.slice(0, 72) || 'Team follow-up', ownerId: 'you', status: 'open', createdAt: new Date().toISOString() }
+    setFollowUps((items) => [...items, followUp])
+    setMessages((items) => items.map((item) => item.id === id ? { ...item, followUpId: followUp.id } : item))
+    void recordSimulationEvent('followup_created', { followUpId: followUp.id, messageId: id, spaceId: message.spaceId, ownerId: followUp.ownerId, followUp })
+    log('Created a follow-up from a team message'); notify('Follow-up created and assigned to you.')
+  }
+  const completeFollowUp = (id: string) => {
+    const followUp = followUps.find((item) => item.id === id)
+    if (!followUp) return
+    setFollowUps((items) => items.map((item) => item.id === id ? { ...item, status: 'done' } : item))
+    void recordSimulationEvent('followup_completed', { followUpId: id, messageId: followUp.sourceMessageId })
+    log('Completed a team follow-up'); notify('Follow-up completed.')
+  }
+  const resolveThread = (id: number) => {
+    const message = messages.find((item) => item.id === id)
+    if (!message) return
+    setMessages((items) => items.map((item) => item.id === id ? { ...item, resolved: true } : item))
+    void recordSimulationEvent('thread_resolved', { messageId: id, spaceId: message.spaceId })
+    log('Resolved a team thread'); notify('Thread resolved.')
+  }
+  const archiveTeamSpace = (id: string) => {
+    const space = teamSpaces.find((item) => item.id === id)
+    if (!space) return
+    setTeamSpaces((spaces) => spaces.map((item) => item.id === id ? { ...item, archived: true } : item))
+    void recordSimulationEvent('space_archived', { spaceId: id, name: space.name })
+    log(`Archived #${space.name}`); notify(`#${space.name} archived.`)
   }
   const updateMessage = (id: number, text: string) => {
     const message = messages.find((item) => item.id === id)
@@ -323,6 +687,8 @@ function App() {
     setMessages((items) => items.filter((item) => item.id !== id && item.threadId !== id)); log('Deleted a team message'); void recordSimulationEvent('chat_message_deleted', { messageId: id }); notify('Message deleted.')
   }
   const sendMessage = async (attachment?: TeamAttachment, messageOverride?: string, threadId?: number) => {
+    if (!onboardingQualified) return notify('Complete onboarding and the readiness task before messaging the team.', 'warning')
+    if (!organizationId) return notify('Your simulation run is still loading.', 'warning')
     const message = (messageOverride || draft).trim()
     if (!message && !attachment) return
     const spaceId = selectedSpaceId
@@ -338,15 +704,17 @@ function App() {
       const result = await upload.json() as { artifact: { path: string; url: string | null } }
       storedAttachment = { name: attachment.name, size: attachment.size, type: attachment.type, path: result.artifact.path, url: result.artifact.url || undefined }
     }
-    if (!await recordSimulationEvent('chat_message', { message: message || '(attachment)', channelId: spaceId, threadId: threadId || '', ...(storedAttachment ? { attachmentName: storedAttachment.name, attachmentPath: storedAttachment.path || '', attachmentSize: storedAttachment.size, attachmentType: storedAttachment.type } : {}) })) return
-    setMessages((items) => [...items, { id: Date.now(), spaceId, author: 'You', role: 'Full-stack Engineer', initials: 'Y', tone: 'blue', time: 'now', text: message, link: '', threadId, attachment: storedAttachment }])
+    const localMessageId = createMessageId()
+    const clientMessageId = String(localMessageId)
+    if (!await recordSimulationEvent('chat_message', { message: message || '(attachment)', channelId: spaceId, threadId: threadId || '', clientMessageId, ...(storedAttachment ? { attachmentName: storedAttachment.name, attachmentPath: storedAttachment.path || '', attachmentSize: storedAttachment.size, attachmentType: storedAttachment.type } : {}) })) return
+    setMessages((items) => appendTeamMessage(items, { id: localMessageId, spaceId, author: 'You', role: 'Full-stack Engineer', initials: 'Y', tone: 'blue', time: 'now', text: message, link: '', threadId, clientMessageId, attachment: storedAttachment }))
     log(`Sent ${threadId ? 'a thread reply' : 'a message'} in #${spaceName}`); if (!messageOverride) setDraft(''); notify(threadId ? 'Thread reply sent.' : 'Message sent.')
     window.setTimeout(async () => {
       const result = await requestAgentTurn(spaceId, message)
       if (!result) return
       const tone = result.turn.agent.id === 'maya' ? 'violet' : result.turn.agent.id === 'adele' ? 'orange' : result.turn.agent.id === 'devon' ? 'blue' : 'mint'
       const role = result.turn.agent.role.split('_').map((part) => part[0].toUpperCase() + part.slice(1)).join(' ')
-      setMessages((items) => [...items, { id: Date.now() + 1, spaceId, author: result.turn.agent.name, role, initials: result.turn.agent.name[0], tone, time: 'now', text: result.turn.message, link: '', threadId }])
+      setMessages((items) => appendTeamMessage(items, { id: createMessageId(), spaceId, author: result.turn.agent.name, role, initials: result.turn.agent.name[0], tone, time: 'now', text: result.turn.message, link: '', threadId }))
       setTeamSpaces((spaces) => spaces.map((space) => space.id === spaceId ? { ...space, unread: spaceId === selectedSpaceId ? 0 : space.unread + 1 } : space))
       log(`${result.turn.agent.name.split(' ')[0]} replied in #${spaceName}`)
     }, 700)
@@ -376,23 +744,28 @@ function App() {
   }
 
   const nav = [
+    { id: 'onboarding' as View, label: 'Onboarding', icon: GraduationCap },
     { id: 'home' as View, label: 'Home', icon: LayoutDashboard },
+    { id: 'calendar' as View, label: 'Calendar', icon: CalendarDays, badge: scheduleNotifications.length || undefined },
     { id: 'issues' as View, label: 'Issues', icon: CircleDot, badge: 3 },
     { id: 'workspace' as View, label: 'Workspace', icon: Code2 },
     { id: 'pulls' as View, label: 'Pull requests', icon: GitBranch, badge: prOpen ? 1 : undefined },
     { id: 'feedback' as View, label: 'Feedback', icon: Sparkles },
   ]
+  const toggleTheme = () => setThemeMode(resolvedTheme === 'dark' ? 'light' : 'dark')
+
+  if (!organizationId) return <main className="auth-required"><h1>{runError ? 'Simulation access needs attention.' : 'Preparing your private work simulation…'}</h1><p>{runError || 'Loading your organization, schedule, workspace, and collaboration record.'}</p></main>
 
   return <div className="app-shell">
     <aside className="sidebar">
-      <div className="brand"><span className="brand-mark"><Layers3 size={18} /></span><span>shiftline</span><em>alpha</em></div>
+      <div className="brand"><span className="brand-mark"><Layers3 size={18} /></span><span>AIWEX</span></div>
       <button className="org-switch" onClick={() => setHomeOverlay(homeOverlay === 'organization' ? 'none' : 'organization')} aria-expanded={homeOverlay === 'organization'}><span className="org-icon">S</span><span><b>SignalDesk</b><small>Pro workspace</small></span><ChevronDown size={15} /></button>
       <nav className="primary-nav">
-        {nav.map((item) => <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => setView(item.id)}><item.icon size={18} /><span>{item.label}</span>{item.badge && <i>{item.badge}</i>}</button>)}
+        {nav.map((item) => { const locked = !onboardingQualified && !['onboarding', 'feedback'].includes(item.id); return <button key={item.id} disabled={locked} className={`${view === item.id ? 'active' : ''} ${locked ? 'nav-locked' : ''}`} onClick={() => locked ? notify('Complete onboarding and pass the readiness task to unlock the main project.', 'warning') : setView(item.id)}><item.icon size={18} /><span>{item.label}</span>{locked ? <Lock size={12} /> : item.badge && <i>{item.badge}</i>}</button> })}
       </nav>
       <div className="sidebar-label">Team spaces</div>
-      <div className="team-spaces-list">{teamSpaces.map((space) => <button key={space.id} className={`team-space ${selectedSpaceId === space.id ? 'active-space' : ''}`} onClick={() => selectTeamSpace(space.id)}><span>#</span> {space.name} {space.unread > 0 && <b>{space.unread}</b>}</button>)}</div>
-      {isAddingSpace ? <div className="new-space-form"><input autoFocus value={newSpaceName} onChange={(event) => setNewSpaceName(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && addTeamSpace()} placeholder="space-name"/><button onClick={addTeamSpace}><Check size={13} /></button><button onClick={() => { setIsAddingSpace(false); setNewSpaceName('') }}><X size={13} /></button></div> : <button className="new-space" onClick={() => setIsAddingSpace(true)}><Plus size={15} /> Add a space</button>}
+      <div className="team-spaces-list">{teamSpaces.map((space) => <button key={space.id} disabled={!onboardingQualified} className={`team-space ${selectedSpaceId === space.id ? 'active-space' : ''} ${!onboardingQualified ? 'locked-team-space' : ''}`} onClick={() => selectTeamSpace(space.id)}><span>#</span> {space.name} {!onboardingQualified ? <Lock size={11} /> : space.unread > 0 && <b>{space.unread}</b>}</button>)}</div>
+      {isAddingSpace ? <div className="new-space-form"><input autoFocus value={newSpaceName} onChange={(event) => setNewSpaceName(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && addTeamSpace()} placeholder="space-name"/><button onClick={addTeamSpace}><Check size={13} /></button><button onClick={() => { setIsAddingSpace(false); setNewSpaceName('') }}><X size={13} /></button></div> : <button className="new-space" disabled={!onboardingQualified} onClick={() => setIsAddingSpace(true)}><Plus size={15} /> Add a space</button>}
       <div className="sidebar-bottom">
         <button className="team-row" onClick={() => openAgentPortfolio('maya')}><Avatar id="maya" tone="violet" small /><span>Maya Chen</span><i className="online" /></button>
         <button className="team-row" onClick={() => openAgentPortfolio('noah')}><Avatar id="noah" tone="mint" small /><span>Noah Patel</span><i className="online" /></button>
@@ -404,15 +777,17 @@ function App() {
     <main className="main-area">
       <header className="topbar">
         <div className="crumbs"><span>SignalDesk</span><ArrowRight size={13} /><b>{view === 'home' ? 'Today' : view === 'team-space' ? `# ${selectedSpace?.name}` : view === 'agent-profile' ? selectedAgent.name : nav.find((item) => item.id === view)?.label}</b></div>
-        <div className="top-actions"><button className="icon-button" onClick={() => setHomeOverlay(homeOverlay === 'search' ? 'none' : 'search')} aria-label="Search organization"><Search size={18} /></button><button className="icon-button notification" onClick={() => setHomeOverlay(homeOverlay === 'notifications' ? 'none' : 'notifications')} aria-label="Open notifications"><Bell size={18} />{unreadNotifications > 0 && <i />}</button><button className="help-button" onClick={() => setHomeOverlay(homeOverlay === 'help' ? 'none' : 'help')} aria-label="Open help for this page">?</button></div>
+        <div className="top-actions"><button className="theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}>{resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}<span>{resolvedTheme === 'dark' ? 'Light' : 'Dark'}</span></button><button className="icon-button" onClick={() => setHomeOverlay(homeOverlay === 'search' ? 'none' : 'search')} aria-label="Search organization"><Search size={18} /></button><button className="icon-button notification" onClick={() => setHomeOverlay(homeOverlay === 'notifications' ? 'none' : 'notifications')} aria-label="Open notifications"><Bell size={18} />{unreadNotifications > 0 && <i />}</button><button className="help-button" onClick={() => setHomeOverlay(homeOverlay === 'help' ? 'none' : 'help')} aria-label="Open help for this page">?</button></div>
       </header>
       {homeOverlay !== 'none' && <HomeControls overlay={homeOverlay} close={() => setHomeOverlay('none')} query={searchQuery} setQuery={setSearchQuery} issues={issues} messages={messages} activity={activity} workspaceCode={workspaceCode} prOpen={prOpen} notifications={notifications} readNotificationIds={readNotificationIds} currentView={view} selectResult={(target, spaceId, notificationId) => { if (spaceId) setSelectedSpaceId(spaceId); if (notificationId) setReadNotificationIds((ids) => ids.includes(notificationId) ? ids : [...ids, notificationId]); setView(target); setHomeOverlay('none') }} markAllNotificationsRead={() => setReadNotificationIds(notifications.map((item) => item.id))} advanceTime={advanceSimulationTime} />}
-      {view === 'home' && <HomeView standupDone={standupDone} showCeremony={showCeremony} setShowCeremony={setShowCeremony} completeStandup={completeStandup} messages={activeMessages} allMessages={messages} liveEvents={liveEvents} activeChallenges={activeChallenges} scenarioLevel={scenarioLevel} selectScenarioLevel={selectScenarioLevel} selectedTeamSpace={selectedSpace} draft={draft} setDraft={setDraft} sendMessage={sendMessage} activity={activity} issues={issues} setView={setView} openAgentPortfolio={openAgentPortfolio} testsPassed={testsPassed} committed={committed} prOpen={prOpen} reviewAddressed={reviewAddressed} progress={progress} simulationMinutes={simulationMinutes} advanceTime={() => setHomeOverlay(homeOverlay === 'time' ? 'none' : 'time')} currentIssue={issues.find((issue) => issue.id === 'PROJ-184') || issues.find((issue) => issue.assignee === 'alex')} />}
-      {view === 'team-space' && <TeamSpaceView space={selectedSpace} messages={activeMessages} draft={draft} setDraft={setDraft} sendMessage={sendMessage} sendThreadReply={(message, threadId) => sendMessage(undefined, message, threadId)} updateSpace={updateTeamSpace} updateMessage={updateMessage} deleteMessage={deleteMessage} openAgentPortfolio={openAgentPortfolio} />}
+      {view === 'onboarding' && <FunctionalOnboardingView organizationId={organizationId} onQualified={() => setOnboardingQualified(true)} openProject={() => setView('home')} />}
+      {view === 'home' && <HomeView standupDone={standupDone} showCeremony={showCeremony} setShowCeremony={setShowCeremony} completeStandup={completeStandup} messages={activeMessages} allMessages={messages} liveEvents={liveEvents} activeChallenges={activeChallenges} scenarioLevel={scenarioLevel} scenarioProgression={scenarioProgression} selectScenarioLevel={selectScenarioLevel} selectedTeamSpace={selectedSpace} draft={draft} setDraft={setDraft} sendMessage={sendMessage} activity={activity} issues={issues} setView={setView} openAgentPortfolio={openAgentPortfolio} testsPassed={testsPassed} committed={committed} prOpen={prOpen} reviewAddressed={reviewAddressed} progress={progress} simulationMinutes={simulationMinutes} advanceTime={() => setHomeOverlay(homeOverlay === 'time' ? 'none' : 'time')} currentIssue={issues.find((issue) => issue.id === 'PROJ-184') || issues.find((issue) => issue.assignee === 'alex')} />}
+      {view === 'calendar' && <FunctionalCalendarView organizationId={organizationId} schedule={calendarSchedule} simulationNow={calendarSimulationNow} onScheduleUpdated={(schedule, now) => { setCalendarSchedule(schedule); setCalendarSimulationNow(now) }} />}
+      {view === 'team-space' && <TeamSpaceView space={selectedSpace} messages={activeMessages} allMessages={messages} followUps={followUps} draft={draft} setDraft={setDraft} sendMessage={sendMessage} sendThreadReply={(message, threadId) => sendMessage(undefined, message, threadId)} updateSpace={updateTeamSpace} updateMessage={updateMessage} deleteMessage={deleteMessage} togglePinMessage={togglePinMessage} markMessage={markMessage} createFollowUp={createFollowUp} completeFollowUp={completeFollowUp} resolveThread={resolveThread} archiveSpace={archiveTeamSpace} openAgentPortfolio={openAgentPortfolio} />}
       {view === 'agent-profile' && <AgentPortfolioView agent={selectedAgent} openTeamSpace={() => selectTeamSpace(selectedAgent.id === 'devon' ? 'engineering' : selectedAgent.id === 'maya' ? 'releases' : 'product-usage')} />}
       {view === 'issues' && <FunctionalIssuesView issues={issues} createIssue={createIssue} updateIssue={updateIssue} openWorkspace={() => setView('workspace')} />}
-      {view === 'workspace' && <FunctionalWorkspaceView code={workspaceCode} setCode={setWorkspaceCode} testsPassed={testsPassed} committed={committed} runTests={runTests} commit={commit} openPr={openPr} />}
-      {view === 'pulls' && <FunctionalPullRequestsView prOpen={prOpen} reviewAddressed={reviewAddressed} reviewReplied={reviewReplied} approved={approved} merged={merged} addressReview={addressReview} replyToReview={replyToReview} mergePullRequest={mergePullRequest} />}
+      {view === 'workspace' && <FunctionalWorkspaceView files={workspaceFiles} updateFile={updateWorkspaceFile} saveFile={saveWorkspaceFile} testsPassed={testsPassed && Boolean(workspaceValidation)} committed={committed} testOutput={workspaceValidation?.output} testDurationMs={workspaceValidation?.durationMs} runTests={runTests} commit={commit} openPr={openPr} />}
+      {view === 'pulls' && <FunctionalPullRequestsView prOpen={prOpen} reviewAddressed={reviewAddressed} reviewReplied={reviewReplied} approved={approved} merged={merged} files={workspaceFiles} addressReview={addressReview} replyToReview={replyToReview} mergePullRequest={mergePullRequest} />}
       {view === 'feedback' && <FunctionalFeedbackView organizationId={organizationId} />}
     </main>
     {toast && <div className={`toast ${toast.tone || ''}`}><Check size={17} />{toast.message}<button onClick={() => setToast(null)}><X size={15} /></button></div>}
@@ -435,7 +810,7 @@ function HomeControls({ overlay, close, query, setQuery, issues, messages, activ
     <section className={`home-overlay ${overlay}`} role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
       <button className="overlay-close" onClick={close} aria-label="Close"><X size={16} /></button>
       {overlay === 'time' && <><span className="eyebrow">SIMULATION CLOCK</span><h2>Advance the workday</h2><p>Time moves only when you choose. Scheduled follow-ups and release pressure are triggered from the scenario state.</p><div className="time-options"><button onClick={() => advanceTime(15)}>+15 min <small>Quick focus block</small></button><button onClick={() => advanceTime(60)}>+1 hour <small>Team check-ins may arrive</small></button><button onClick={() => advanceTime(180)}>+3 hours <small>Move toward stakeholder review</small></button></div></>}
-      {overlay === 'search' && <><span className="eyebrow">ORGANIZATION SEARCH</span><h2>Find work and context</h2><input autoFocus className="global-search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search issues, people, or messages" />{!normalizedQuery ? <p>Search across the current scenario’s issue board and team conversations.</p> : <div className="search-results">{issueResults.map((issue) => <button key={issue.id} onClick={() => selectResult('issues')}><CircleDot size={15} /><span><b>{issue.id} · {issue.title}</b><small>{issue.status.replace('_', ' ')} · {issue.priority} priority</small></span></button>)}{messageResults.map((message) => <button key={message.id} onClick={() => selectResult('team-space', message.spaceId)}><MessageSquare size={15} /><span><b>{message.author} in #{message.spaceId}</b><small>{message.text.slice(0, 90)}</small></span></button>)}{!issueResults.length && !messageResults.length && <p>No scenario records match “{query}”.</p>}</div>}</>}
+      {overlay === 'search' && <><span className="eyebrow">ORGANIZATION SEARCH</span><h2>Find work and context</h2><input autoFocus className="global-search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search issues, people, or messages" />{!normalizedQuery ? <p>Search across the current scenario’s issue board and team conversations.</p> : <div className="search-results">{issueResults.map((issue) => <button key={issue.id} onClick={() => selectResult('issues')}><CircleDot size={15} /><span><b>{issue.id} · {issue.title}</b><small>{issue.status.replace('_', ' ')} · {issue.priority} priority</small></span></button>)}{messageResults.map((message, index) => <button key={`${message.id}-${message.spaceId}-${index}`} onClick={() => selectResult('team-space', message.spaceId)}><MessageSquare size={15} /><span><b>{message.author} in #{message.spaceId}</b><small>{message.text.slice(0, 90)}</small></span></button>)}{!issueResults.length && !messageResults.length && <p>No scenario records match “{query}”.</p>}</div>}</>}
       {overlay === 'search' && normalizedQuery && (pullResults.length > 0 || workspaceResults.length > 0 || activityResults.length > 0) && <div className="search-results extended-search-results">{pullResults.map((result) => <button key={result.id} onClick={() => selectResult('pulls')}><GitBranch size={15} /><span><b>{result.title}</b><small>{result.detail}</small></span></button>)}{workspaceResults.map((result) => <button key={result.id} onClick={() => selectResult('workspace')}><Code2 size={15} /><span><b>{result.title}</b><small>{result.detail}</small></span></button>)}{activityResults.map((item) => <button key={item.id} onClick={() => selectResult('feedback')}><Check size={15} /><span><b>Simulation activity</b><small>{item.text}</small></span></button>)}</div>}
       {overlay === 'notifications' && <><div className="notification-title"><div><span className="eyebrow">ACTION REQUIRED</span><h2>Notifications</h2></div><button className="ghost-button" onClick={markAllNotificationsRead}>Mark all read</button></div><div className="notification-list">{notifications.length ? notifications.map((notification) => <button key={notification.id} className={readNotificationIds.includes(notification.id) ? 'notification-read' : ''} onClick={() => selectResult(notification.view, notification.spaceId, notification.id)}><Bell size={16} /><span><b>{notification.title}</b><small>{notification.detail}</small></span><ArrowRight size={14} /></button>) : <p>You are caught up. New scenario events will appear here.</p>}</div></>}
       {overlay === 'help' && <><span className="eyebrow">CONTEXTUAL HELP</span><h2>{help.title}</h2><ol className="guide-list">{help.steps.map((step) => <li key={step}>{step}</li>)}</ol><button className="primary-button" onClick={() => selectResult(help.target)}>{help.label} <ArrowRight size={15} /></button></>}
@@ -444,13 +819,13 @@ function HomeControls({ overlay, close, query, setQuery, issues, messages, activ
   </div>
 }
 
-function ScenarioLevelPanel({ level, selectLevel, challenges }: { level: ScenarioLevel; selectLevel: (level: ScenarioLevel) => void; challenges: SimulationEvent[] }) {
+function ScenarioLevelPanel({ level, progression, selectLevel, challenges }: { level: ScenarioLevel; progression: ScenarioProgression; selectLevel: (level: ScenarioLevel) => void; challenges: SimulationEvent[] }) {
   const activePolicy = scenarioPolicies[level]
-  return <section className="scenario-level-panel"><div className="scenario-level-head"><div><span className="eyebrow">SIMULATION DIFFICULTY</span><h2>{activePolicy.label} workplace scenario</h2><p>{activePolicy.summary}</p></div><div className="scenario-policy"><b>{activePolicy.activeTaskTarget} active learner task{activePolicy.activeTaskTarget > 1 ? 's' : ''}</b><span>{activePolicy.deadlineLabel} · {activePolicy.agentStyle}</span></div></div><div className="level-options">{(Object.keys(scenarioPolicies) as ScenarioLevel[]).map((item) => <button key={item} className={level === item ? 'selected-level' : ''} onClick={() => selectLevel(item)}><b>{scenarioPolicies[item].label}</b><small>{scenarioPolicies[item].activeTaskTarget} task{scenarioPolicies[item].activeTaskTarget > 1 ? 's' : ''} · {scenarioPolicies[item].agentStyle}</small></button>)}</div>{challenges.length > 0 && <div className="scenario-challenges">{challenges.map((event) => <div className={`scenario-challenge ${String(event.metadata?.severity || 'info')}`} key={event.id}><Bot size={16} /><div><b>{String(event.metadata?.title || 'Scenario update')}</b><span>{String(event.metadata?.message || '')}</span></div></div>)}</div>}</section>
+  return <section className="scenario-level-panel"><div className="scenario-level-head"><div><span className="eyebrow">SIMULATION DIFFICULTY</span><h2>{activePolicy.label} workplace scenario</h2><p>{activePolicy.summary}</p></div><div className="scenario-policy"><b>{activePolicy.activeTaskTarget} active learner task{activePolicy.activeTaskTarget > 1 ? 's' : ''}</b><span>{activePolicy.deadlineLabel} · {activePolicy.agentStyle}</span></div></div><div className="level-options">{(Object.keys(scenarioPolicies) as ScenarioLevel[]).map((item) => { const locked = item !== level && !progression.unlockedLevels.includes(item); return <button key={item} disabled={locked} className={`${level === item ? 'selected-level' : ''} ${locked ? 'locked-level' : ''}`} onClick={() => selectLevel(item)}><b>{scenarioPolicies[item].label}{locked ? ' · locked' : ''}</b><small>{scenarioPolicies[item].activeTaskTarget} task{scenarioPolicies[item].activeTaskTarget > 1 ? 's' : ''} · {scenarioPolicies[item].agentStyle}</small></button>})}</div>{progression.nextLevel && <div className="level-requirements"><b>Unlock {scenarioPolicies[progression.nextLevel].label}</b><span>Coaching readiness: {progression.overallScore}</span>{progression.requirements.map((requirement) => <div key={requirement.label} className={requirement.complete ? 'complete' : ''}><Check size={13} /> {requirement.label}</div>)}</div>}{challenges.length > 0 && <div className="scenario-challenges">{challenges.map((event) => <div className={`scenario-challenge ${String(event.metadata?.severity || 'info')}`} key={event.id}><Bot size={16} /><div><b>{String(event.metadata?.title || 'Scenario update')}</b><span>{String(event.metadata?.message || '')}</span></div></div>)}</div>}</section>
 }
 
-function HomeView(props: { standupDone: boolean; showCeremony: boolean; setShowCeremony: (v: boolean) => void; completeStandup: () => void; messages: TeamMessage[]; allMessages: TeamMessage[]; liveEvents: SimulationEvent[]; activeChallenges: SimulationEvent[]; scenarioLevel: ScenarioLevel; selectScenarioLevel: (level: ScenarioLevel) => void; selectedTeamSpace: TeamSpace; draft: string; setDraft: (v: string) => void; sendMessage: (attachment?: TeamAttachment) => void; activity: ActivityItem[]; issues: WorkIssue[]; setView: (v: View) => void; openAgentPortfolio: (id: string) => void; testsPassed: boolean; committed: boolean; prOpen: boolean; reviewAddressed: boolean; progress: number; simulationMinutes: number; advanceTime: () => void; currentIssue?: WorkIssue }) {
-  const { standupDone, showCeremony, setShowCeremony, completeStandup, messages, allMessages, liveEvents, activeChallenges, scenarioLevel, selectScenarioLevel, selectedTeamSpace, draft, setDraft, sendMessage, activity, issues, setView, openAgentPortfolio, testsPassed, committed, prOpen, reviewAddressed, progress, simulationMinutes, advanceTime, currentIssue } = props
+function HomeView(props: { standupDone: boolean; showCeremony: boolean; setShowCeremony: (v: boolean) => void; completeStandup: () => void; messages: TeamMessage[]; allMessages: TeamMessage[]; liveEvents: SimulationEvent[]; activeChallenges: SimulationEvent[]; scenarioLevel: ScenarioLevel; scenarioProgression: ScenarioProgression; selectScenarioLevel: (level: ScenarioLevel) => void; selectedTeamSpace: TeamSpace; draft: string; setDraft: (v: string) => void; sendMessage: (attachment?: TeamAttachment) => void; activity: ActivityItem[]; issues: WorkIssue[]; setView: (v: View) => void; openAgentPortfolio: (id: string) => void; testsPassed: boolean; committed: boolean; prOpen: boolean; reviewAddressed: boolean; progress: number; simulationMinutes: number; advanceTime: () => void; currentIssue?: WorkIssue }) {
+  const { standupDone, showCeremony, setShowCeremony, completeStandup, messages, allMessages, liveEvents, activeChallenges, scenarioLevel, scenarioProgression, selectScenarioLevel, selectedTeamSpace, draft, setDraft, sendMessage, activity, issues, setView, openAgentPortfolio, testsPassed, committed, prOpen, reviewAddressed, progress, simulationMinutes, advanceTime, currentIssue } = props
   const task = currentIssue || seededIssues[0]
   const nextStep = !standupDone
     ? { title: 'Post your stand-up', detail: 'Make today’s work and any dependency risks visible to the team.', label: 'Post update', action: () => setShowCeremony(true) }
@@ -465,7 +840,7 @@ function HomeView(props: { standupDone: boolean; showCeremony: boolean; setShowC
             : { title: 'Keep the release moving', detail: 'Reply to the review, record the rationale, and complete the merge gate.', label: 'Open review', action: () => setView('pulls') }
   return <div className="page home-page">
     <section className="welcome"><div><p className="eyebrow">WEDNESDAY, SEPTEMBER 18 · SPRINT 2 OF 3</p><h1>Good morning, Alex <span>✦</span></h1><p>Here’s what needs your attention in SignalDesk today.</p></div><button className="time-button" onClick={advanceTime}><Clock3 size={16} /> Simulated time <b>{formatSimulationTime(simulationMinutes)}</b><ChevronDown size={14} /></button></section>
-    <ScenarioLevelPanel level={scenarioLevel} selectLevel={selectScenarioLevel} challenges={activeChallenges} />
+    <ScenarioLevelPanel level={scenarioLevel} progression={scenarioProgression} selectLevel={selectScenarioLevel} challenges={activeChallenges} />
     <section className="priority-grid">
       <div className="ceremony-card"><div className="card-icon lavender"><UsersRound size={19} /></div><div><span className="pill lavender-pill">CEREMONY</span><h3>Async stand-up is due</h3><p>Share your plan and flag any blockers with the team.</p></div><button className={standupDone ? 'complete-button done' : 'complete-button'} onClick={() => setShowCeremony(!showCeremony)}>{standupDone ? <><Check size={16} /> Posted</> : <>Post update <ArrowRight size={15} /></>}</button>
         {showCeremony && !standupDone && <div className="standup-popover"><b>Today’s stand-up</b><p>What did you finish? What will you work on? Any blockers?</p><button onClick={completeStandup}>Post my update</button></div>}
@@ -490,7 +865,7 @@ function HomeView(props: { standupDone: boolean; showCeremony: boolean; setShowC
     <OrgActivityMap issues={issues} messages={allMessages} liveEvents={liveEvents} simulationMinutes={simulationMinutes} standupDone={standupDone} testsPassed={testsPassed} committed={committed} prOpen={prOpen} reviewAddressed={reviewAddressed} setView={setView} />
     <div className="content-grid lower-grid">
       <section className="card conversation-card"><div className="section-head"><div><span className="eyebrow">TEAM CONVERSATION</span><h2><span className="hash">#</span> {selectedTeamSpace.name} {selectedTeamSpace.unread > 0 && <em>{selectedTeamSpace.unread} unread</em>}</h2></div><button className="ghost-button" onClick={() => setView('team-space')}>Open channel <ArrowRight size={14} /></button></div>
-        <div className="messages">{messages.map((message) => { const agentId = message.author === 'You' ? '' : message.author.startsWith('Maya') ? 'maya' : message.author.startsWith('Noah') ? 'noah' : message.author.startsWith('Adele') ? 'adele' : 'devon'; return <div className="message" key={message.id}><Avatar id={agentId || 'you'} tone={message.tone} /><div><div className="message-meta">{agentId ? <button className="agent-name" onClick={() => openAgentPortfolio(agentId)}>{message.author}</button> : <b>{message.author}</b>}<span>{message.role}</span><time>{message.time}</time></div><p><MessageText text={message.text} openAgentPortfolio={openAgentPortfolio} /> {message.link && <a>{message.link}</a>}</p></div></div>})}</div>
+        <div className="messages">{messages.map((message, index) => { const agentId = message.author === 'You' ? '' : message.author.startsWith('Maya') ? 'maya' : message.author.startsWith('Noah') ? 'noah' : message.author.startsWith('Adele') ? 'adele' : 'devon'; return <div className="message" key={`${message.id}-${message.spaceId}-${index}`}><Avatar id={agentId || 'you'} tone={message.tone} /><div><div className="message-meta">{agentId ? <button className="agent-name" onClick={() => openAgentPortfolio(agentId)}>{message.author}</button> : <b>{message.author}</b>}<span>{message.role}</span><time>{message.time}</time></div><p><MessageText text={message.text} openAgentPortfolio={openAgentPortfolio} /> {message.link && <a>{message.link}</a>}</p></div></div>})}</div>
         <MentionComposer className="message-composer" draft={draft} setDraft={setDraft} sendMessage={sendMessage} placeholder={`Message #${selectedTeamSpace.name}`}/>
       </section>
       <section className="card activity-card"><div className="section-head"><div><span className="eyebrow">LIVE ORG ACTIVITY</span><h2>While you were away</h2></div><button className="ghost-button" onClick={() => setView('feedback')}>View evidence <ArrowRight size={14} /></button></div>
@@ -501,7 +876,111 @@ function HomeView(props: { standupDone: boolean; showCeremony: boolean; setShowC
   </div>
 }
 
-function TeamSpaceView({ space, messages, draft, setDraft, sendMessage, sendThreadReply, updateSpace, updateMessage, deleteMessage, openAgentPortfolio }: { space: TeamSpace; messages: TeamMessage[]; draft: string; setDraft: (value: string) => void; sendMessage: (attachment?: TeamAttachment) => void; sendThreadReply: (message: string, threadId: number) => void; updateSpace: (space: TeamSpace) => void; updateMessage: (id: number, text: string) => void; deleteMessage: (id: number) => void; openAgentPortfolio: (id: string) => void }) {
+function TeamSpaceView({ space, messages, followUps, draft, setDraft, sendMessage, sendThreadReply, updateSpace, updateMessage, deleteMessage, togglePinMessage, markMessage, createFollowUp, completeFollowUp, resolveThread, archiveSpace, openAgentPortfolio }: { space: TeamSpace; messages: TeamMessage[]; allMessages: TeamMessage[]; followUps: FollowUp[]; draft: string; setDraft: (value: string) => void; sendMessage: (attachment?: TeamAttachment) => void; sendThreadReply: (message: string, threadId: number) => void; updateSpace: (space: TeamSpace) => void; updateMessage: (id: number, text: string) => void; deleteMessage: (id: number) => void; togglePinMessage: (id: number) => void; markMessage: (id: number, tag: MessageTag) => void; createFollowUp: (id: number) => void; completeFollowUp: (id: string) => void; resolveThread: (id: number) => void; archiveSpace: (id: string) => void; openAgentPortfolio: (id: string) => void }) {
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<'messages' | 'decisions' | 'files' | 'tasks' | 'activity'>('messages')
+  const [threadId, setThreadId] = useState<number | null>(null)
+  const [threadDraft, setThreadDraft] = useState('')
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editDraft, setEditDraft] = useState('')
+  const [nameDraft, setNameDraft] = useState(space.name)
+  const [descriptionDraft, setDescriptionDraft] = useState(space.description || '')
+  const [purposeDraft, setPurposeDraft] = useState(space.purpose || '')
+  const [guidelinesDraft, setGuidelinesDraft] = useState(space.guidelines || '')
+  const [spaceTypeDraft, setSpaceTypeDraft] = useState<SpaceType>(space.spaceType || 'general')
+  const [ownerDraft, setOwnerDraft] = useState(space.ownerId || 'maya')
+  const [visibilityDraft, setVisibilityDraft] = useState<TeamSpace['visibility']>(space.visibility || 'team')
+  const [memberIds, setMemberIds] = useState(space.memberIds || ['maya', 'noah', 'adele', 'devon', 'you'])
+  useEffect(() => {
+    setNameDraft(space.name); setDescriptionDraft(space.description || ''); setPurposeDraft(space.purpose || ''); setGuidelinesDraft(space.guidelines || '')
+    setSpaceTypeDraft(space.spaceType || 'general'); setOwnerDraft(space.ownerId || 'maya'); setVisibilityDraft(space.visibility || 'team')
+    setMemberIds(space.memberIds || ['maya', 'noah', 'adele', 'devon', 'you']); setSettingsOpen(false); setThreadId(null)
+  }, [space.id, space.name, space.description, space.purpose, space.guidelines, space.spaceType, space.ownerId, space.visibility, space.memberIds])
+  const agentIdFor = (message: TeamMessage) => message.author === 'You' ? 'you' : message.author.startsWith('Maya') ? 'maya' : message.author.startsWith('Noah') ? 'noah' : message.author.startsWith('Adele') ? 'adele' : 'devon'
+  const roots = messages.filter((message) => !message.threadId)
+  const members = memberIds.map((id) => mentionOptions.find((option) => option.id === id)).filter(Boolean)
+  const owner = mentionOptions.find((member) => member.id === space.ownerId) || mentionOptions[0]
+  const pinnedMessages = roots.filter((message) => message.pinned || (space.pinnedMessageIds || []).includes(message.id))
+  const decisionMessages = roots.filter((message) => message.tags?.some((tag) => ['decision', 'risk', 'blocker', 'handoff'].includes(tag)))
+  const fileMessages = messages.filter((message) => message.attachment)
+  const spaceFollowUps = followUps.filter((item) => messages.some((message) => message.id === item.sourceMessageId))
+  const openThreads = roots.filter((message) => messages.some((reply) => reply.threadId === message.id) && !message.resolved).length
+  const saveSettings = () => {
+    updateSpace({ ...space, name: nameDraft, description: descriptionDraft.trim() || purposeDraft.trim() || 'A focused space for decisions, updates, and working context.', purpose: purposeDraft.trim(), guidelines: guidelinesDraft.trim(), spaceType: spaceTypeDraft, ownerId: ownerDraft, visibility: visibilityDraft, memberIds })
+    setSettingsOpen(false)
+  }
+  const toggleMember = (id: string) => setMemberIds((ids) => (space.requiredMemberIds || ['you']).includes(id) ? ids : ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id])
+  const renderMessage = (message: TeamMessage, messageIndex: number) => {
+    const agentId = agentIdFor(message)
+    const replies = messages.filter((item) => item.threadId === message.id)
+    const followUp = message.followUpId ? followUps.find((item) => item.id === message.followUpId) : null
+    return <div className={`message-block org-message-block ${message.resolved ? 'resolved-thread' : ''}`} key={`message-${message.id}-${message.spaceId}-${messageIndex}`}>
+      <div className="message channel-message">
+        <Avatar id={agentId} tone={message.tone} />
+        <div className="message-content">
+          <div className="message-meta">{agentId !== 'you' ? <button className="agent-name" onClick={() => openAgentPortfolio(agentId)}>{message.author}</button> : <b>{message.author}</b>}<span>{message.role}</span><time>{message.time}{message.edited && ' - edited'}</time></div>
+          {editingId === message.id ? <div className="edit-message"><input autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { updateMessage(message.id, editDraft); setEditingId(null) } }} /><button onClick={() => { updateMessage(message.id, editDraft); setEditingId(null) }}><Check size={13} /></button><button onClick={() => setEditingId(null)}><X size={13} /></button></div> : <><p><MessageText text={message.text} openAgentPortfolio={openAgentPortfolio} /> {message.link && <a>{message.link}</a>}</p>{message.tags?.length ? <div className="message-tags">{message.tags.map((tag) => <span className={`message-tag ${tag}`} key={tag}>{tagLabels[tag]}</span>)}</div> : null}{message.attachment && <span className="message-attachment"><FileText size={13} /> {message.attachment.name}<small>{Math.max(1, Math.round(message.attachment.size / 1024))} KB</small></span>}</>}
+          {followUp && <div className={`message-followup ${followUp.status}`}><ListChecks size={13} /><span><b>{followUp.status === 'done' ? 'Completed follow-up' : 'Open follow-up'}</b>{followUp.title}</span>{followUp.status === 'open' && <button onClick={() => completeFollowUp(followUp.id)}>Complete</button>}</div>}
+          <div className="message-actions org-message-actions">
+            <button onClick={() => { setThreadId(threadId === message.id ? null : message.id); setThreadDraft('') }}><Reply size={13} /> {replies.length ? `${replies.length} replies` : 'Reply'}</button>
+            <button onClick={() => togglePinMessage(message.id)}>{message.pinned ? <PinOff size={13} /> : <Pin size={13} />} {message.pinned ? 'Unpin' : 'Pin'}</button>
+            <button onClick={() => markMessage(message.id, 'decision')}><BadgeCheck size={13} /> Decision</button>
+            <button onClick={() => markMessage(message.id, 'risk')}><Flag size={13} /> Risk</button>
+            <button onClick={() => createFollowUp(message.id)}><ListChecks size={13} /> Follow-up</button>
+            {replies.length > 0 && !message.resolved && <button onClick={() => resolveThread(message.id)}><Check size={13} /> Resolve</button>}
+            {message.author === 'You' && <><button onClick={() => { setEditingId(message.id); setEditDraft(message.text) }}><Pencil size={12} /> Edit</button><button onClick={() => deleteMessage(message.id)}><Trash2 size={12} /> Delete</button></>}
+          </div>
+        </div>
+      </div>
+      {threadId === message.id && <div className="thread-panel org-thread-panel">
+        <div className="thread-head"><b>{message.resolved ? 'Resolved thread' : 'Open thread'}</b><span>{replies.length} repl{replies.length === 1 ? 'y' : 'ies'}</span></div>
+        {replies.map((reply, replyIndex) => <div className="thread-reply" key={`${reply.id}-${reply.spaceId}-${replyIndex}`}><Avatar id={agentIdFor(reply)} tone={reply.tone} small /><span><strong>{reply.author}</strong> {reply.text || (reply.attachment ? `Shared ${reply.attachment.name}` : '')}<small>{reply.time}{reply.edited && ' - edited'}</small></span></div>)}
+        <div className="thread-composer"><input value={threadDraft} onChange={(event) => setThreadDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && threadDraft.trim()) { sendThreadReply(threadDraft, message.id); setThreadDraft('') } }} placeholder="Reply with a focused update" /><button onClick={() => { if (threadDraft.trim()) { sendThreadReply(threadDraft, message.id); setThreadDraft('') } }}><Send size={14} /></button></div>
+      </div>}
+    </div>
+  }
+  return <div className="page team-space-page org-team-space-page">
+    <section className="channel-hero org-channel-hero">
+      <div><p className="eyebrow">{(space.spaceType || 'general').toUpperCase()} SPACE</p><h1><span>#</span> {space.name}</h1><p>{space.purpose || space.description || 'Decisions and updates shared with the SignalDesk team.'}</p><div className="space-meta-strip"><span><UsersRound size={13} /> {members.length} members</span><span><BadgeCheck size={13} /> Owner: {owner.label}</span><span><ShieldCheck size={13} /> {space.visibility}</span><span><Clock3 size={13} /> {space.retentionPolicy}</span></div></div>
+      <div className="channel-members"><div className="avatar-stack">{members.slice(0, 5).map((member) => <Avatar key={member!.id} id={member!.id} tone={member!.tone} small />)}</div><button className="soft-icon" onClick={() => setSettingsOpen(!settingsOpen)} aria-label="Edit team space"><Settings2 size={16} /></button>{!space.archived && <button className="soft-icon" onClick={() => archiveSpace(space.id)} aria-label="Archive team space"><Archive size={16} /></button>}</div>
+    </section>
+    {settingsOpen && <section className="channel-settings org-channel-settings card">
+      <div><span className="eyebrow">SPACE GOVERNANCE</span><h3>Keep the channel accountable</h3></div>
+      <label>Name<input value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} /></label>
+      <label>Type<select value={spaceTypeDraft} onChange={(event) => setSpaceTypeDraft(event.target.value as SpaceType)}><option value="project">Project</option><option value="engineering">Engineering</option><option value="release">Release</option><option value="incident">Incident</option><option value="general">General</option></select></label>
+      <label>Owner<select value={ownerDraft} onChange={(event) => setOwnerDraft(event.target.value)}>{mentionOptions.filter((member) => member.id !== 'you').map((member) => <option value={member.id} key={member.id}>{member.label}</option>)}</select></label>
+      <label>Visibility<select value={visibilityDraft} onChange={(event) => setVisibilityDraft(event.target.value as TeamSpace['visibility'])}><option value="team">Team</option><option value="organization">Organization</option><option value="restricted">Restricted</option></select></label>
+      <label>Description<textarea value={descriptionDraft} onChange={(event) => setDescriptionDraft(event.target.value)} /></label>
+      <label>Purpose<textarea value={purposeDraft} onChange={(event) => setPurposeDraft(event.target.value)} /></label>
+      <label>Posting guidelines<textarea value={guidelinesDraft} onChange={(event) => setGuidelinesDraft(event.target.value)} /></label>
+      <div className="member-picker"><b><UserPlus size={14} /> Members</b><div>{mentionOptions.map((member) => <button key={member.id} className={memberIds.includes(member.id) ? 'selected-member' : ''} onClick={() => toggleMember(member.id)}><Avatar id={member.id} tone={member.tone} small /> {member.label}{(space.requiredMemberIds || ['you']).includes(member.id) && <small>Required</small>}</button>)}</div></div>
+      <div className="settings-actions"><button className="ghost-button" onClick={() => setSettingsOpen(false)}>Cancel</button><button className="primary-button" onClick={saveSettings}><Check size={15} /> Save governance</button></div>
+    </section>}
+    <section className="space-context-row">
+      <article className="card"><Pin size={16} /><span><b>{pinnedMessages.length}</b>Pinned context</span></article>
+      <article className="card"><BadgeCheck size={16} /><span><b>{decisionMessages.length}</b>Decisions and risks</span></article>
+      <article className="card"><ListChecks size={16} /><span><b>{spaceFollowUps.filter((item) => item.status === 'open').length}</b>Open follow-ups</span></article>
+      <article className="card"><Reply size={16} /><span><b>{openThreads}</b>Open threads</span></article>
+    </section>
+    <section className="org-channel-layout">
+      <article className="channel-thread org-channel-thread">
+        <div className="space-tabs"><button className={activeTab === 'messages' ? 'selected' : ''} onClick={() => setActiveTab('messages')}>Messages</button><button className={activeTab === 'decisions' ? 'selected' : ''} onClick={() => setActiveTab('decisions')}>Decisions</button><button className={activeTab === 'files' ? 'selected' : ''} onClick={() => setActiveTab('files')}>Files</button><button className={activeTab === 'tasks' ? 'selected' : ''} onClick={() => setActiveTab('tasks')}>Tasks</button><button className={activeTab === 'activity' ? 'selected' : ''} onClick={() => setActiveTab('activity')}>Activity</button></div>
+        {activeTab === 'messages' && <><div className="channel-notice"><MessageSquare size={16} /><span>{space.guidelines || 'Keep decisions discoverable for the whole team.'}</span></div><div className="channel-messages">{roots.map(renderMessage)}</div><MentionComposer className="channel-composer" draft={draft} setDraft={setDraft} sendMessage={sendMessage} placeholder={`Message #${space.name}`} /></>}
+        {activeTab === 'decisions' && <div className="decision-log">{decisionMessages.length ? decisionMessages.map((message, index) => <article className="card" key={`decision-${message.id}-${message.spaceId}-${index}`}><div><span className="message-tags">{message.tags?.map((tag) => <span className={`message-tag ${tag}`} key={tag}>{tagLabels[tag]}</span>)}</span><h3>{message.link || message.text.slice(0, 90)}</h3><p>{message.text}</p><small>{message.author} - {message.time}</small></div><button className="ghost-button" onClick={() => setThreadId(message.id)}><Reply size={13} /> Open thread</button></article>) : <p className="empty-org-panel">No decisions, risks, or blockers have been marked yet.</p>}</div>}
+        {activeTab === 'files' && <div className="file-register">{fileMessages.length ? fileMessages.map((message, index) => <article className="card" key={`file-${message.id}-${message.spaceId}-${index}`}><FileText size={17} /><span><b>{message.attachment?.name}</b><small>{message.author} - {Math.max(1, Math.round((message.attachment?.size || 0) / 1024))} KB</small></span></article>) : <p className="empty-org-panel">No artifacts have been attached in this space.</p>}</div>}
+        {activeTab === 'tasks' && <div className="followup-register">{spaceFollowUps.length ? spaceFollowUps.map((item) => <article className={`card ${item.status}`} key={item.id}><ListChecks size={17} /><span><b>{item.title}</b><small>Owner: Alex Morgan - Source message #{item.sourceMessageId}</small></span>{item.status === 'open' ? <button className="primary-button" onClick={() => completeFollowUp(item.id)}>Complete</button> : <span className="helper-success"><Check size={13} /> Done</span>}</article>) : <p className="empty-org-panel">No follow-ups have been created from messages.</p>}</div>}
+        {activeTab === 'activity' && <div className="activity-register">{roots.map((message, index) => <article key={`activity-${message.id}-${message.spaceId}-${index}`}><CircleDot size={13} /><span><b>{message.author}</b>{message.pinned ? 'Pinned context' : message.tags?.length ? `Marked ${message.tags.map((tag) => tagLabels[tag]).join(', ')}` : 'Posted message'}<small>{message.time}</small></span></article>)}</div>}
+      </article>
+      <aside className="channel-details org-channel-details">
+        <span className="eyebrow">PINNED CONTEXT</span>{pinnedMessages.length ? pinnedMessages.map((message, index) => <button className="pinned-context" key={`pinned-${message.id}-${message.spaceId}-${index}`} onClick={() => setThreadId(message.id)}><Pin size={13} /><span>{message.text.slice(0, 96)}<small>{message.author}</small></span></button>) : <p>No pinned context yet.</p>}
+        <hr /><span className="eyebrow">LINKED WORK</span><div className="linked-work-list">{(space.linkedIssueIds || []).map((issueId) => <span key={issueId}><Link2 size={13} /> {issueId}</span>)}</div>
+        <hr /><span className="eyebrow">MEMBERS</span>{members.map((member) => <button className="channel-member" key={member!.id} onClick={() => member!.id === 'you' ? undefined : openAgentPortfolio(member!.id)}><Avatar id={member!.id} tone={member!.tone} small /> {member!.label} <span>{member!.id === 'you' ? 'You' : member!.role}</span></button>)}
+      </aside>
+    </section>
+  </div>
+}
+
+function LegacyTeamSpaceView({ space, messages, draft, setDraft, sendMessage, sendThreadReply, updateSpace, updateMessage, deleteMessage, openAgentPortfolio }: { space: TeamSpace; messages: TeamMessage[]; draft: string; setDraft: (value: string) => void; sendMessage: (attachment?: TeamAttachment) => void; sendThreadReply: (message: string, threadId: number) => void; updateSpace: (space: TeamSpace) => void; updateMessage: (id: number, text: string) => void; deleteMessage: (id: number) => void; openAgentPortfolio: (id: string) => void }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [threadId, setThreadId] = useState<number | null>(null)
   const [threadDraft, setThreadDraft] = useState('')
@@ -519,7 +998,7 @@ function TeamSpaceView({ space, messages, draft, setDraft, sendMessage, sendThre
   return <div className="page team-space-page">
     <section className="channel-hero"><div><p className="eyebrow">TEAM SPACE</p><h1><span>#</span> {space.name}</h1><p>{space.description || 'Decisions and updates shared with the SignalDesk team.'}</p></div><div className="channel-members"><div className="avatar-stack">{members.slice(0, 4).map((member) => <Avatar key={member!.id} id={member!.id} tone={member!.tone} small />)}</div><span>{members.length} members</span><button className="soft-icon" onClick={() => setSettingsOpen(!settingsOpen)} aria-label="Edit team space"><Settings2 size={16} /></button></div></section>
     {settingsOpen && <section className="channel-settings card"><div><span className="eyebrow">SPACE SETTINGS</span><h3>Keep the channel useful</h3></div><label>Name<input value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} /></label><label>Description<textarea value={descriptionDraft} onChange={(event) => setDescriptionDraft(event.target.value)} /></label><div className="member-picker"><b><UserPlus size={14} /> Members</b><div>{mentionOptions.map((member) => <button key={member.id} className={memberIds.includes(member.id) ? 'selected-member' : ''} onClick={() => toggleMember(member.id)}><Avatar id={member.id} tone={member.tone} small /> {member.label}{member.id === 'you' && <small>Required</small>}</button>)}</div></div><div className="settings-actions"><button className="ghost-button" onClick={() => setSettingsOpen(false)}>Cancel</button><button className="primary-button" onClick={saveSettings}><Check size={15} /> Save space</button></div></section>}
-    <section className="channel-layout"><article className="channel-thread"><div className="channel-notice"><MessageSquare size={16} /><span>This is the beginning of <b>#{space.name}</b>. Keep updates discoverable for the whole team.</span></div><div className="channel-messages">{roots.map((message) => { const agentId = agentIdFor(message); const replies = messages.filter((item) => item.threadId === message.id); return <div className="message-block" key={message.id}><div className="message channel-message"><Avatar id={agentId || 'you'} tone={message.tone} /><div className="message-content"><div className="message-meta">{agentId ? <button className="agent-name" onClick={() => openAgentPortfolio(agentId)}>{message.author}</button> : <b>{message.author}</b>}<span>{message.role}</span><time>{message.time}{message.edited && ' · edited'}</time></div>{editingId === message.id ? <div className="edit-message"><input autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { updateMessage(message.id, editDraft); setEditingId(null) } }} /><button onClick={() => { updateMessage(message.id, editDraft); setEditingId(null) }}><Check size={13} /></button><button onClick={() => setEditingId(null)}><X size={13} /></button></div> : <><p><MessageText text={message.text} openAgentPortfolio={openAgentPortfolio} /> {message.link && <a>{message.link}</a>}</p>{message.attachment && <span className="message-attachment"><FileText size={13} /> {message.attachment.name}<small>{Math.max(1, Math.round(message.attachment.size / 1024))} KB</small></span>}</>}<div className="message-actions"><button onClick={() => { setThreadId(threadId === message.id ? null : message.id); setThreadDraft('') }}><Reply size={13} /> {replies.length ? `${replies.length} replies` : 'Reply in thread'}</button>{message.author === 'You' && <><button onClick={() => { setEditingId(message.id); setEditDraft(message.text) }}><Pencil size={12} /> Edit</button><button onClick={() => deleteMessage(message.id)}><Trash2 size={12} /> Delete</button></>}</div></div></div>{threadId === message.id && <div className="thread-panel"><b>Thread</b>{replies.map((reply) => <div className="thread-reply" key={reply.id}><Avatar id={agentIdFor(reply) || 'you'} tone={reply.tone} small /><span><strong>{reply.author}</strong> {reply.text || (reply.attachment ? `Shared ${reply.attachment.name}` : '')}<small>{reply.time}{reply.edited && ' · edited'}</small></span></div>)}<div className="thread-composer"><input value={threadDraft} onChange={(event) => setThreadDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && threadDraft.trim()) { sendThreadReply(threadDraft, message.id); setThreadDraft('') } }} placeholder="Reply in thread"/><button onClick={() => { if (threadDraft.trim()) { sendThreadReply(threadDraft, message.id); setThreadDraft('') } }}><Send size={14} /></button></div></div>}</div>})}</div><MentionComposer className="channel-composer" draft={draft} setDraft={setDraft} sendMessage={sendMessage} placeholder={`Message #${space.name}`}/></article>
+    <section className="channel-layout"><article className="channel-thread"><div className="channel-notice"><MessageSquare size={16} /><span>This is the beginning of <b>#{space.name}</b>. Keep updates discoverable for the whole team.</span></div><div className="channel-messages">{roots.map((message, rootIndex) => { const agentId = agentIdFor(message); const replies = messages.filter((item) => item.threadId === message.id); return <div className="message-block" key={`${message.id}-${message.spaceId}-${rootIndex}`}><div className="message channel-message"><Avatar id={agentId || 'you'} tone={message.tone} /><div className="message-content"><div className="message-meta">{agentId ? <button className="agent-name" onClick={() => openAgentPortfolio(agentId)}>{message.author}</button> : <b>{message.author}</b>}<span>{message.role}</span><time>{message.time}{message.edited && ' · edited'}</time></div>{editingId === message.id ? <div className="edit-message"><input autoFocus value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { updateMessage(message.id, editDraft); setEditingId(null) } }} /><button onClick={() => { updateMessage(message.id, editDraft); setEditingId(null) }}><Check size={13} /></button><button onClick={() => setEditingId(null)}><X size={13} /></button></div> : <><p><MessageText text={message.text} openAgentPortfolio={openAgentPortfolio} /> {message.link && <a>{message.link}</a>}</p>{message.attachment && <span className="message-attachment"><FileText size={13} /> {message.attachment.name}<small>{Math.max(1, Math.round(message.attachment.size / 1024))} KB</small></span>}</>}<div className="message-actions"><button onClick={() => { setThreadId(threadId === message.id ? null : message.id); setThreadDraft('') }}><Reply size={13} /> {replies.length ? `${replies.length} replies` : 'Reply in thread'}</button>{message.author === 'You' && <><button onClick={() => { setEditingId(message.id); setEditDraft(message.text) }}><Pencil size={12} /> Edit</button><button onClick={() => deleteMessage(message.id)}><Trash2 size={12} /> Delete</button></>}</div></div></div>{threadId === message.id && <div className="thread-panel"><b>Thread</b>{replies.map((reply, replyIndex) => <div className="thread-reply" key={`${reply.id}-${reply.spaceId}-${replyIndex}`}><Avatar id={agentIdFor(reply) || 'you'} tone={reply.tone} small /><span><strong>{reply.author}</strong> {reply.text || (reply.attachment ? `Shared ${reply.attachment.name}` : '')}<small>{reply.time}{reply.edited && ' · edited'}</small></span></div>)}<div className="thread-composer"><input value={threadDraft} onChange={(event) => setThreadDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && threadDraft.trim()) { sendThreadReply(threadDraft, message.id); setThreadDraft('') } }} placeholder="Reply in thread"/><button onClick={() => { if (threadDraft.trim()) { sendThreadReply(threadDraft, message.id); setThreadDraft('') } }}><Send size={14} /></button></div></div>}</div>})}</div><MentionComposer className="channel-composer" draft={draft} setDraft={setDraft} sendMessage={sendMessage} placeholder={`Message #${space.name}`}/></article>
       <aside className="channel-details"><span className="eyebrow">ABOUT THIS SPACE</span><h3>Team context</h3><p>{space.description || 'Decisions and updates shared with the SignalDesk team.'}</p><hr/><span className="eyebrow">MEMBERS</span>{members.map((member) => <button className="channel-member" key={member!.id} onClick={() => member!.id === 'you' ? undefined : openAgentPortfolio(member!.id)}><Avatar id={member!.id} tone={member!.tone} small /> {member!.label} <span>{member!.id === 'you' ? 'You' : member!.role}</span></button>)}</aside></section>
   </div>
 }

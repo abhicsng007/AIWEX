@@ -1,6 +1,6 @@
 # Supabase backend setup
 
-The simulator runs locally without cloud credentials. To enable durable events and Team Space artifact uploads, create a Supabase project and run `supabase/migrations/202607170001_simulator_backend.sql` in its SQL editor (or through the Supabase CLI).
+The simulator runs locally without cloud credentials. To enable durable events, private authenticated runs, and Team Space artifact uploads, create a Supabase project and run every migration in `supabase/migrations/` in filename order through its SQL editor (or the Supabase CLI).
 
 Add these server-only values to `.env.local`:
 
