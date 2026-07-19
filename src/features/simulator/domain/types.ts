@@ -32,6 +32,8 @@ export type SimulationEventType =
   | 'scenario_level_selected'
   | 'delivery_cycle_started'
   | 'task_completed'
+  | 'task_report_created'
+  | 'project_report_created'
   | 'level_unlocked'
   | 'onboarding_started'
   | 'onboarding_profile_confirmed'

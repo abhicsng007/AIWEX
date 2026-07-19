@@ -1,4 +1,5 @@
 import type { SimulationEvent } from './types'
+import { deriveWorkflowState } from './workflow'
 
 export type TrainingPhase = 'company' | 'security' | 'technology' | 'project' | 'delivery'
 export type TrainingResource = { label: string; href: string; description: string }
@@ -233,8 +234,8 @@ export function scheduleFromEvents(events: SimulationEvent[]): ScheduleItem[] {
   return [
     item('manager-checkin-day-1', 'Manager check-in and working agreement', 0, .5, 'ceremony'),
     item('focus-proj-184', 'Focus block - PROJ-184', 1, 3, 'focus'),
-    item('review-window', 'Review window - PR #482', 5, 1, 'ceremony'),
-    item('deadline-proj-184', 'Deadline - PROJ-184 implementation plan', 8, .25, 'deadline'),
+    item('review-window', 'Review window - PR #482', 4, 1, 'ceremony'),
+    item('deadline-proj-184', 'Deadline - PROJ-184 implementation plan', 5, .25, 'deadline'),
     item('standup-day-2', 'Day 2 async stand-up', 24, .25, 'ceremony'),
     item('deadline-proj-191', 'Deadline - PROJ-191 assessment', 32, .25, 'deadline'),
     item('release-check', 'Release readiness check', 48, 1, 'ceremony'),
@@ -367,12 +368,33 @@ export function evaluateReadinessAnswers(answers: Record<string, number>): Readi
   }
 }
 
-export function simulationNow(events: SimulationEvent[], actualNow = new Date()) {
+export function simulationClockMinutes(events: SimulationEvent[]) {
+  const latestAdvance = [...events].reverse().find((event) => event.type === 'simulation_time_advanced')
+  const clock = Number(latestAdvance?.metadata?.to)
+  return Number.isFinite(clock) ? Math.max(0, clock) : 9 * 60 + 42
+}
+
+export function simulationNow(events: SimulationEvent[]) {
   const created = eventOf(events, 'schedule_created').at(-1)
-  if (!created) return actualNow
+  if (!created) return new Date()
   const base = Date.parse(String(created.metadata?.startAt || created.createdAt))
   const advancedMinutes = eventMetadata(events, 'simulation_time_advanced').reduce((total, metadata) => total + Math.max(0, Number(metadata.minutes) || 0), 0)
-  return new Date(Math.max(actualNow.getTime(), base + advancedMinutes * 60_000))
+  return new Date(base + advancedMinutes * 60_000)
+}
+
+export function scheduleCompletionError(item: ScheduleItem, events: SimulationEvent[]) {
+  const workflow = deriveWorkflowState(events)
+  const hasEvent = (type: SimulationEvent['type']) => events.some((event) => event.type === type)
+  if (item.id === 'manager-checkin-day-1' && !workflow.standupPosted) return 'Post your stand-up before recording the manager check-in as complete.'
+  if (item.id === 'focus-proj-184' && !hasEvent('workspace_revision_saved')) return 'Save an implementation revision before recording this focus block as complete.'
+  if (item.id === 'review-window' && !workflow.pullRequestOpened) return 'Open the pull request before recording the review window as complete.'
+  if (item.id === 'deadline-proj-184' && !workflow.pullRequestOpened) return 'The delivery deadline needs a review-ready pull request, or a recorded recovery plan.'
+  if (item.id === 'standup-day-2' && !hasEvent('task_completed')) return 'Finish the current delivery task before closing the next-day stand-up.'
+  if (item.id === 'deadline-proj-191' && !hasEvent('task_completed')) return 'Complete the assigned delivery task before recording this deadline as complete.'
+  if (item.id === 'release-check' && !workflow.merged) return 'The release check needs an approved, merged pull request.'
+  if (item.id === 'deadline-release-note' && !hasEvent('scenario_deployment_recorded')) return 'Record rollout validation before closing the release-note deadline.'
+  if (item.id === 'retro-day-3' && !hasEvent('task_completed')) return 'Complete at least one delivery task before recording the retrospective as complete.'
+  return null
 }
 
 export function nextScheduleStart(now = new Date()) {

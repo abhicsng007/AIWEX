@@ -14,6 +14,7 @@ export async function POST(request: NextRequest) {
   let turn
   try { turn = await createAgentTurn({ organizationId: identity.runId, channelId: body.channelId, userMessage: body.userMessage.trim(), channelType: body.channelType, channelPurpose: body.channelPurpose, recentDecisions: body.recentDecisions, openFollowUps: body.openFollowUps }) }
   catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'No teammate can respond in this channel.' }, { status: 422 }) }
-  await inMemoryEventStore.append({ id: crypto.randomUUID(), organizationId: identity.runId, type: 'agent_reply', createdAt: new Date().toISOString(), metadata: { agentId: turn.agent.id, channelId: turn.channelId, message: turn.message, action: turn.action } })
-  return NextResponse.json({ turn }, { status: 201 })
+  const event = { id: crypto.randomUUID(), organizationId: identity.runId, type: 'agent_reply' as const, createdAt: new Date().toISOString(), metadata: { agentId: turn.agent.id, channelId: turn.channelId, message: turn.message, action: turn.action } }
+  await inMemoryEventStore.append(event)
+  return NextResponse.json({ turn, event }, { status: 201 })
 }

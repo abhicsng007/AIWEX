@@ -4,8 +4,10 @@ import { inMemoryEventStore } from '@/features/simulator/server/event-store'
 import type { SimulationEvent, SimulationEventType } from '@/features/simulator/domain/types'
 import { activeDeliveryCycle, deriveWorkflowState, validateWorkflowTransition } from '@/features/simulator/domain/workflow'
 import { deriveScenarioProgression, scenarioLevelChangeError, taskCompletionError } from '@/features/simulator/domain/progression'
+import { followUpCompletionError } from '@/features/simulator/domain/accountability'
 import { scenarioLevelFromEvents, taskIdsForScenarioLevel, type ScenarioLevel } from '@/features/simulator/domain/difficulty'
 import { projectAccessError } from '@/features/simulator/domain/onboarding'
+import { createProjectDeliveryReport, createTaskDeliveryReport } from '@/features/simulator/domain/delivery-reports'
 
 const allowedTypes = new Set<SimulationEventType>([
   'standup_posted', 'commit_created', 'pull_request_opened', 'review_addressed',
@@ -52,6 +54,23 @@ function deliveryCycleEvent(runId: string, level: ScenarioLevel, taskId: string,
   }
 }
 
+async function recordBlockedCompletionFollowUp(runId: string, events: SimulationEvent[], issueId: string) {
+  const cycle = activeDeliveryCycle(events)
+  const trigger = `completion-evidence-${cycle?.level || 'basic'}-${issueId}-${cycle?.sequence || 1}`
+  if (events.some((event) => event.type === 'agent_reply' && event.metadata?.trigger === trigger)) return
+  const reply: SimulationEvent = {
+    id: crypto.randomUUID(), organizationId: runId, type: 'agent_reply', createdAt: new Date().toISOString(),
+    metadata: { agentId: 'noah', channelId: 'engineering', trigger, action: 'raise_blocker', message: `@alex, ${issueId} cannot be marked complete yet. The branch, review, approval, rationale, and merge evidence need to be recorded first. What is the remaining blocker?` },
+  }
+  const followUp = { id: `followup-${trigger}`, sourceMessageId: Date.parse(reply.createdAt) + 1, title: `Complete the ${issueId} delivery gate with merge evidence`, ownerId: 'you', status: 'open', createdAt: reply.createdAt }
+  const tracked: SimulationEvent = {
+    id: crypto.randomUUID(), organizationId: runId, type: 'followup_created', createdAt: new Date().toISOString(),
+    metadata: { followUpId: followUp.id, messageId: followUp.sourceMessageId, spaceId: 'engineering', ownerId: 'you', requirement: 'merge', followUp },
+  }
+  await inMemoryEventStore.append(reply)
+  await inMemoryEventStore.append(tracked)
+}
+
 export async function GET(request: NextRequest) {
   const identity = await simulationRunIdentity(request, request.nextUrl.searchParams.get('organizationId'))
   if (!identity) return NextResponse.json({ error: 'Sign in to access this simulation run.' }, { status: 401 })
@@ -84,11 +103,31 @@ export async function POST(request: NextRequest) {
   }
   if (body.type === 'task_completed') {
     const completionError = taskCompletionError(existingEvents, metadataResult.metadata)
+    if (completionError) {
+      await recordBlockedCompletionFollowUp(identity.runId, existingEvents, String(metadataResult.metadata?.issueId || 'this task'))
+      return NextResponse.json({ error: completionError }, { status: 409 })
+    }
+  }
+  if (body.type === 'followup_completed') {
+    const completionError = followUpCompletionError(existingEvents, String(metadataResult.metadata?.followUpId || ''))
     if (completionError) return NextResponse.json({ error: completionError }, { status: 409 })
   }
   const event: SimulationEvent = { id: crypto.randomUUID(), organizationId: identity.runId, type: body.type, createdAt: new Date().toISOString(), metadata: metadataResult.metadata }
   await inMemoryEventStore.append(event)
   let events = await inMemoryEventStore.list(identity.runId)
+  let taskReport: SimulationEvent | null = null
+  if (body.type === 'task_completed') {
+    const level = metadataResult.metadata?.level as ScenarioLevel
+    const taskId = String(metadataResult.metadata?.issueId || '')
+    const createdAt = new Date().toISOString()
+    const report = createTaskDeliveryReport(events, { id: crypto.randomUUID(), taskId, level, createdAt })
+    taskReport = {
+      id: crypto.randomUUID(), organizationId: identity.runId, type: 'task_report_created', createdAt,
+      metadata: { taskId, level, report },
+    }
+    await inMemoryEventStore.append(taskReport)
+    events = [...events, taskReport]
+  }
   let cycle: SimulationEvent | null = null
   if (body.type === 'scenario_level_selected') {
     const level = metadataResult.metadata?.level as ScenarioLevel
@@ -115,6 +154,19 @@ export async function POST(request: NextRequest) {
     ? { id: crypto.randomUUID(), organizationId: identity.runId, type: 'level_unlocked' as const, createdAt: new Date().toISOString(), metadata: { level: progression.nextLevel, unlockedFrom: progression.currentLevel, overallScore: progression.overallScore } }
     : null
   if (unlock) await inMemoryEventStore.append(unlock)
-  const finalEvents = unlock ? [...events, unlock] : events
-  return NextResponse.json({ event, cycle, unlock, workflow: deriveWorkflowState(finalEvents), progression: deriveScenarioProgression(finalEvents) }, { status: 201 })
+  let finalEvents = unlock ? [...events, unlock] : events
+  let projectReport: SimulationEvent | null = null
+  if (body.type === 'task_completed' && !finalEvents.some((item) => item.type === 'project_report_created')) {
+    const createdAt = new Date().toISOString()
+    const report = createProjectDeliveryReport(finalEvents, { id: crypto.randomUUID(), createdAt })
+    if (report) {
+      projectReport = {
+        id: crypto.randomUUID(), organizationId: identity.runId, type: 'project_report_created', createdAt,
+        metadata: { report },
+      }
+      await inMemoryEventStore.append(projectReport)
+      finalEvents = [...finalEvents, projectReport]
+    }
+  }
+  return NextResponse.json({ event, taskReport, projectReport, cycle, unlock, workflow: deriveWorkflowState(finalEvents), progression: deriveScenarioProgression(finalEvents) }, { status: 201 })
 }
