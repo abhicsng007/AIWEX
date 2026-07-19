@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const identity = await simulationRunIdentity(request)
   if (!identity) return NextResponse.json({ error: 'Sign in to access your private simulation run.' }, { status: 401 })
   const supabase = getSupabaseAdmin()
-  if (supabase) {
+  if (supabase && !identity.isDemo) {
     const { error } = await supabase.from('simulation_runs').upsert({ id: identity.runId, owner_user_id: identity.actor.id, scenario_key: 'signaldesk-usage-alerts', status: 'active', updated_at: new Date().toISOString() }, { onConflict: 'id' })
     if (error) return NextResponse.json({ error: `Your simulation run could not be initialized: ${error.message}`, action: 'Run supabase/migrations/202607180002_private_simulation_runs.sql.' }, { status: 503 })
   }

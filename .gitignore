@@ -4,3 +4,7 @@ dist/
 *.tsbuildinfo
 .env*
 !.env.example
+theia/**/lib/
+theia/browser-app/src-gen/
+theia/browser-app/gen-webpack.*
+theia/browser-app/webpack.config.js

@@ -8,27 +8,38 @@ import FunctionalFeedbackView from '@/features/simulator/components/functional-f
 import FunctionalIssuesView from '@/features/simulator/components/functional-issues-view'
 import FunctionalOnboardingView from '@/features/simulator/components/functional-onboarding-view'
 import FunctionalCalendarView from '@/features/simulator/components/functional-calendar-view'
+import FunctionalMeetingView from '@/features/simulator/components/functional-meeting-view'
+import FunctionalLearnerGuideView from '@/features/simulator/components/functional-learner-guide-view'
+import FunctionalTheiaWorkspaceView from '@/features/simulator/components/functional-theia-workspace-view'
 import OrgActivityMap from '@/features/simulator/components/org-activity-map'
 import { agentPortfolios, type AgentPortfolio } from '@/features/simulator/domain/agent-profiles'
 import { seededIssues, type WorkIssue } from '@/features/simulator/domain/issues'
-import { issuesForScenarioLevel, scenarioPolicies, type ScenarioLevel } from '@/features/simulator/domain/difficulty'
+import { issuesForScenarioLevel, scenarioPolicies, taskIdsForScenarioLevel, type ScenarioLevel } from '@/features/simulator/domain/difficulty'
 import { deriveScenarioProgression, type ScenarioProgression } from '@/features/simulator/domain/progression'
 import { scenarioWorkspaceFiles, type WorkspaceFile } from '@/features/simulator/domain/workspace'
 import type { ScheduleItem } from '@/features/simulator/domain/onboarding'
+import { meetingForSchedule } from '@/features/simulator/domain/meetings'
 import {
   Archive, BadgeCheck,
   ArrowRight, Bell, Bot, CalendarDays, Check, ChevronDown, CircleDot, Clock3, Code2,
   Columns3, FileCode2, GitBranch, GraduationCap, Inbox, Layers3, LayoutDashboard, Lock,
   Flag, Link2, ListChecks, Pin, PinOff,
-  MessageSquare, Moon, MoreHorizontal, Paperclip, Play, Plus, Search, Send, Sun,
+  FastForward, MessageSquare, Moon, MoreHorizontal, Paperclip, Play, Plus, Search, Send, Sun,
   FileText, Pencil, Reply, Settings2, ShieldCheck, Sparkles, TerminalSquare, Trash2, UserPlus, UsersRound, X,
 } from 'lucide-react'
 
-type View = 'onboarding' | 'home' | 'calendar' | 'issues' | 'workspace' | 'pulls' | 'feedback' | 'team-space' | 'agent-profile'
+type View = 'guide' | 'onboarding' | 'home' | 'calendar' | 'meetings' | 'issues' | 'workspace' | 'pulls' | 'feedback' | 'team-space' | 'agent-profile'
 type Toast = { message: string; tone?: 'success' | 'warning' } | null
 type SpaceType = 'project' | 'engineering' | 'release' | 'incident' | 'general'
 type MessageTag = 'decision' | 'risk' | 'question' | 'handoff' | 'blocker'
 type FollowUp = { id: string; sourceMessageId: number; title: string; ownerId: string; status: 'open' | 'done'; createdAt: string }
+type SimulationCheckpoint = { at: number; title: string; detail: string }
+
+const simulationCheckpoints: SimulationCheckpoint[] = [
+  { at: 10 * 60, title: 'Stand-up follow-up', detail: 'Maya checks whether your plan and blockers are visible.' },
+  { at: 11 * 60, title: 'Release-risk check-in', detail: 'The stakeholder update asks for any delivery risk.' },
+  { at: 15 * 60, title: 'Stakeholder check-in', detail: 'The release pressure becomes visible if the PR is not open.' },
+]
 type TeamSpace = {
   id: string
   name: string
@@ -228,20 +239,24 @@ function App() {
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [workspaceCode, setWorkspaceCode] = useState(code)
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>(scenarioWorkspaceFiles)
+  const [workspaceSurface, setWorkspaceSurface] = useState<'built-in' | 'theia'>('built-in')
   const [workspaceValidation, setWorkspaceValidation] = useState<WorkspaceValidation | null>(null)
   const [issues, setIssues] = useState<WorkIssue[]>(seededIssues)
   const [scenarioLevel, setScenarioLevel] = useState<ScenarioLevel>('basic')
   const [liveEvents, setLiveEvents] = useState<SimulationEvent[]>([])
   const [simulationMinutes, setSimulationMinutes] = useState(9 * 60 + 42)
+  const [isAdvancingTime, setIsAdvancingTime] = useState(false)
   const [homeOverlay, setHomeOverlay] = useState<HomeOverlay>('none')
   const [searchQuery, setSearchQuery] = useState('')
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([])
   const [onboardingQualified, setOnboardingQualified] = useState(false)
   const [calendarSchedule, setCalendarSchedule] = useState<ScheduleItem[]>([])
   const [calendarSimulationNow, setCalendarSimulationNow] = useState(() => new Date().toISOString())
+  const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null)
   const [themeMode, setThemeMode] = useState<ThemeMode>('system')
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light')
   const backendWarningShown = useRef(false)
+  const advancingTimeRef = useRef(false)
 
   useEffect(() => {
     if (!organizationId) return
@@ -350,9 +365,22 @@ function App() {
     localStorage.setItem(`shiftline-progress:${organizationId}`, JSON.stringify({ standupDone, testsPassed, committed, prOpen, reviewAddressed, reviewReplied, approved, merged, activity, workspaceCode, messages, teamSpaces, followUps, selectedSpaceId, issues, simulationMinutes, readNotificationIds, scenarioLevel }))
   }, [organizationId, standupDone, testsPassed, committed, prOpen, reviewAddressed, reviewReplied, approved, merged, activity, workspaceCode, messages, teamSpaces, followUps, selectedSpaceId, issues, simulationMinutes, readNotificationIds, scenarioLevel])
 
+  const resetDeliveryWorkflow = () => {
+    setStandupDone(false)
+    setTestsPassed(false)
+    setCommitted(false)
+    setPrOpen(false)
+    setReviewAddressed(false)
+    setReviewReplied(false)
+    setApproved(false)
+    setMerged(false)
+    setWorkspaceValidation(null)
+    setShowCeremony(false)
+  }
+
   useEffect(() => {
     const ingest = (event: SimulationEvent) => {
-      setLiveEvents((events) => events.some((item) => item.id === event.id) ? events : [...events, event].slice(-80))
+      setLiveEvents((events) => events.some((item) => item.id === event.id) ? events : [...events, event])
       const metadata = event.metadata || {}
       const channelId = typeof metadata.channelId === 'string' ? metadata.channelId : ''
       const text = typeof metadata.message === 'string' ? metadata.message : ''
@@ -383,6 +411,7 @@ function App() {
       if (event.type === 'review_reply') setReviewReplied(true)
       if (event.type === 'approval_granted') setApproved(true)
       if (event.type === 'pull_request_merged') setMerged(true)
+      if (event.type === 'delivery_cycle_started') resetDeliveryWorkflow()
       if (event.type === 'simulation_time_advanced' && typeof metadata.to === 'number') setSimulationMinutes(metadata.to)
       if (event.type === 'scenario_level_selected' && (metadata.level === 'basic' || metadata.level === 'intermediate' || metadata.level === 'advanced')) setScenarioLevel(metadata.level)
       if (event.type === 'team_space_created' && typeof metadata.spaceId === 'string' && typeof metadata.name === 'string') {
@@ -447,7 +476,7 @@ function App() {
         const startsAt = Date.parse(item.startsAt)
         const endsAt = Date.parse(item.endsAt)
         const minutesUntil = Math.ceil((startsAt - currentTime) / 60_000)
-        if (currentTime >= startsAt && currentTime <= endsAt) return { id: 'calendar-now-' + item.id, title: 'Now: ' + item.title, detail: 'This scheduled work block is in progress.', view: 'calendar' as View, priority: 1 }
+        if (currentTime >= startsAt && currentTime <= endsAt) return { id: 'calendar-now-' + item.id, title: 'Now: ' + item.title, detail: item.kind === 'ceremony' ? 'The conference room is ready for this team meeting.' : 'This scheduled work block is in progress.', view: item.kind === 'ceremony' ? 'meetings' as View : 'calendar' as View, priority: 1 }
         if (minutesUntil > 0 && minutesUntil <= 30) return { id: 'calendar-soon-' + item.id, title: item.title + ' starts soon', detail: 'Starts in ' + minutesUntil + ' min. Open Calendar for context and actions.', view: 'calendar' as View, priority: 2 }
         return null
       })
@@ -467,6 +496,11 @@ function App() {
     ...activity.slice(0, 4).map((item) => ({ id: `activity-${item.id}`, title: 'Your simulation activity', detail: item.text, view: 'feedback' as View })),
   ].filter(Boolean) as NotificationItem[], [scheduleNotifications, standupDone, testsPassed, committed, prOpen, reviewAddressed, approved, teamSpaces, activity])
   const unreadNotifications = notifications.filter((item) => !readNotificationIds.includes(item.id)).length
+  const liveMeetingCount = useMemo(() => {
+    const now = Date.parse(calendarSimulationNow)
+    const currentTime = Number.isFinite(now) ? now : Date.now()
+    return calendarSchedule.filter((item) => item.kind === 'ceremony' && !item.completed && !item.missed && currentTime >= Date.parse(item.startsAt) && currentTime <= Date.parse(item.endsAt)).length
+  }, [calendarSchedule, calendarSimulationNow])
   const activeChallenges = liveEvents.filter((event) => event.type === 'agent_reply' && typeof event.metadata?.severity === 'string').slice(-2)
   const notify = (message: string, tone: 'success' | 'warning' = 'success') => {
     setToast({ message, tone }); window.setTimeout(() => setToast(null), 3200)
@@ -480,7 +514,10 @@ function App() {
       notify(result.error || 'The simulation could not record that action.', 'warning')
       return false
     }
-    return true
+    const result = await response.json() as { event: SimulationEvent; cycle?: SimulationEvent | null; unlock?: SimulationEvent | null }
+    const recordedEvents = [result.event, result.cycle, result.unlock].filter((event): event is SimulationEvent => Boolean(event))
+    setLiveEvents((events) => [...events, ...recordedEvents.filter((event) => !events.some((item) => item.id === event.id))])
+    return result
   }
   const requestAgentTurn = async (channelId: string, userMessage: string) => {
     const channel = teamSpaces.find((space) => space.id === channelId)
@@ -501,43 +538,55 @@ function App() {
   const updateIssue = async (issue: WorkIssue) => {
     const previous = issues.find((item) => item.id === issue.id)
     if (issue.status === 'done' && previous?.status !== 'done' && issue.assignee === 'alex') {
-      if (!await recordSimulationEvent('task_completed', { issueId: issue.id, level: scenarioLevel })) return
+      const result = await recordSimulationEvent('task_completed', { issueId: issue.id, level: scenarioLevel })
+      if (!result) return
+      if (result.cycle) resetDeliveryWorkflow()
       log(`Completed ${issue.id} through the ${scenarioPolicies[scenarioLevel].label} merge gate`)
     }
     setIssues((items) => items.map((item) => item.id === issue.id ? issue : item)); log(`Updated ${issue.id}: ${issue.title}`); void recordSimulationEvent('issue_updated', { issueId: issue.id, status: issue.status, priority: issue.priority, assignee: issue.assignee, level: scenarioLevel, issue })
   }
   const selectScenarioLevel = async (level: ScenarioLevel) => {
-    if (!await recordSimulationEvent('scenario_level_selected', { level })) return
+    const result = await recordSimulationEvent('scenario_level_selected', { level })
+    if (!result) return
+    if (result.cycle) resetDeliveryWorkflow()
     setScenarioLevel(level)
+    const activeTaskIds = new Set(taskIdsForScenarioLevel[level])
     setIssues((current) => issuesForScenarioLevel(level).map((nextIssue) => {
       const existing = current.find((item) => item.id === nextIssue.id)
-      return existing ? { ...nextIssue, status: existing.status, updatedAt: existing.updatedAt } : nextIssue
+      return existing && !activeTaskIds.has(nextIssue.id) ? { ...nextIssue, status: existing.status, updatedAt: existing.updatedAt } : nextIssue
     }))
     log(`Started the ${scenarioPolicies[level].label} scenario`); notify(`${scenarioPolicies[level].label} level is active. The scenario will pace its next challenge from your work state.`)
   }
   const advanceSimulationTime = async (minutes: number) => {
-    if (minutes <= 0) return
-    const from = simulationMinutes
-    const next = Math.min(17 * 60, from + minutes)
-    if (!await recordSimulationEvent('simulation_time_advanced', { from, to: next, minutes: next - from })) return
-    setSimulationMinutes(next)
-    const formatTime = (value: number) => `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`
-    log(`Advanced simulated time from ${formatTime(from)} to ${formatTime(next)}`)
-    if (from < 10 * 60 && next >= 10 * 60 && !standupDone) {
-      setMessages((items) => [...items, { id: createMessageId(), spaceId: 'product-usage', author: 'Maya Chen', role: 'Product Manager', initials: 'M', tone: 'violet', time: '10:00 AM', text: '@alex, quick reminder: please post your stand-up before you begin implementation so dependencies are visible.', link: '' }])
-      setTeamSpaces((spaces) => spaces.map((space) => space.id === 'product-usage' ? { ...space, unread: selectedSpaceId === 'product-usage' ? 0 : space.unread + 1 } : space))
-      log('Maya followed up on the overdue stand-up')
+    if (minutes <= 0 || advancingTimeRef.current) return
+    advancingTimeRef.current = true
+    setIsAdvancingTime(true)
+    try {
+      const from = simulationMinutes
+      const next = Math.min(17 * 60, from + minutes)
+      if (!await recordSimulationEvent('simulation_time_advanced', { from, to: next, minutes: next - from })) return
+      setSimulationMinutes(next)
+      const formatTime = (value: number) => `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`
+      log(`Advanced simulated time from ${formatTime(from)} to ${formatTime(next)}`)
+      if (from < 10 * 60 && next >= 10 * 60 && !standupDone) {
+        setMessages((items) => [...items, { id: createMessageId(), spaceId: 'product-usage', author: 'Maya Chen', role: 'Product Manager', initials: 'M', tone: 'violet', time: '10:00 AM', text: '@alex, quick reminder: please post your stand-up before you begin implementation so dependencies are visible.', link: '' }])
+        setTeamSpaces((spaces) => spaces.map((space) => space.id === 'product-usage' ? { ...space, unread: selectedSpaceId === 'product-usage' ? 0 : space.unread + 1 } : space))
+        log('Maya followed up on the overdue stand-up')
+      }
+      if (from < 11 * 60 && next >= 11 * 60) {
+        setMessages((items) => [...items, { id: createMessageId(), spaceId: 'releases', author: 'Maya Chen', role: 'Product Manager', initials: 'M', tone: 'violet', time: '11:00 AM', text: 'Stakeholder check-in moved to 3 PM. Please flag anything that could put the usage-alerts scope at risk.', link: 'PROJ-184' }])
+        setTeamSpaces((spaces) => spaces.map((space) => space.id === 'releases' ? { ...space, unread: selectedSpaceId === 'releases' ? 0 : space.unread + 1 } : space))
+        log('Maya posted a release-risk check-in')
+      }
+      if (from < 15 * 60 && next >= 15 * 60 && !prOpen) {
+        log('Release pressure increased: PROJ-184 needs a review-ready branch today')
+        notify('The stakeholder check-in is here. Keep PROJ-184 moving and flag any blockers.', 'warning')
+      } else notify(`Simulation moved to ${formatTime(next)}.`)
+      setHomeOverlay('none')
+    } finally {
+      advancingTimeRef.current = false
+      setIsAdvancingTime(false)
     }
-    if (from < 11 * 60 && next >= 11 * 60) {
-      setMessages((items) => [...items, { id: createMessageId(), spaceId: 'releases', author: 'Maya Chen', role: 'Product Manager', initials: 'M', tone: 'violet', time: '11:00 AM', text: 'Stakeholder check-in moved to 3 PM. Please flag anything that could put the usage-alerts scope at risk.', link: 'PROJ-184' }])
-      setTeamSpaces((spaces) => spaces.map((space) => space.id === 'releases' ? { ...space, unread: selectedSpaceId === 'releases' ? 0 : space.unread + 1 } : space))
-      log('Maya posted a release-risk check-in')
-    }
-    if (from < 15 * 60 && next >= 15 * 60 && !prOpen) {
-      log('Release pressure increased: PROJ-184 needs a review-ready branch today')
-      notify('The stakeholder check-in is here. Keep PROJ-184 moving and flag any blockers.', 'warning')
-    } else notify(`Simulation moved to ${formatTime(next)}.`)
-    setHomeOverlay('none')
   }
   const completeStandup = async () => {
     if (!await recordSimulationEvent('standup_posted')) return
@@ -583,17 +632,29 @@ function App() {
     setTestsPassed(false)
     setWorkspaceValidation(null)
   }
+  const synchronizeTheiaFile = (file: WorkspaceFile) => {
+    setWorkspaceFiles((files) => files.map((item) => item.path === file.path ? file : item))
+    if (file.path === 'app/components/alerts-panel.tsx') setWorkspaceCode(file.content)
+    setTestsPassed(false)
+    setWorkspaceValidation(null)
+    log(`Synchronized ${file.path} from the isolated Theia workbench`)
+  }
   const saveWorkspaceFile = async (path: string) => {
     if (!organizationId) return false
     const file = workspaceFiles.find((item) => item.path === path)
     if (!file) return false
-    const response = await fetch('/api/simulation/workspace', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId, path, content: file.content, baseRevisionId: file.revisionId }) })
-    const result = await response.json() as { file?: WorkspaceFile; error?: string }
-    if (!response.ok || !result.file) { notify(result.error || 'The workspace revision could not be saved.', 'warning'); return false }
-    setWorkspaceFiles((files) => files.map((item) => item.path === path ? result.file! : item))
-    if (path === 'app/components/alerts-panel.tsx') setWorkspaceCode(result.file.content)
-    log(`Saved ${path} to the shared workspace record`)
-    return true
+    try {
+      const response = await fetch('/api/simulation/workspace', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId, path, content: file.content, baseRevisionId: file.revisionId }) })
+      const result = await response.json().catch(() => ({})) as { file?: WorkspaceFile; error?: string }
+      if (!response.ok || !result.file) { notify(result.error || 'The workspace revision could not be saved.', 'warning'); return false }
+      setWorkspaceFiles((files) => files.map((item) => item.path === path ? result.file! : item))
+      if (path === 'app/components/alerts-panel.tsx') setWorkspaceCode(result.file.content)
+      log(`Saved ${path} to the shared workspace record`)
+      return true
+    } catch {
+      notify('The workspace service is unavailable. Your local revision is still open; try saving again shortly.', 'warning')
+      return false
+    }
   }
   const selectTeamSpace = (spaceId: string) => {
     if (!onboardingQualified) return notify('Complete onboarding and the readiness task before joining Team Spaces.', 'warning')
@@ -744,9 +805,11 @@ function App() {
   }
 
   const nav = [
+    { id: 'guide' as View, label: 'Getting started', icon: FileText },
     { id: 'onboarding' as View, label: 'Onboarding', icon: GraduationCap },
     { id: 'home' as View, label: 'Home', icon: LayoutDashboard },
     { id: 'calendar' as View, label: 'Calendar', icon: CalendarDays, badge: scheduleNotifications.length || undefined },
+    { id: 'meetings' as View, label: 'Meetings', icon: UsersRound, badge: liveMeetingCount || undefined },
     { id: 'issues' as View, label: 'Issues', icon: CircleDot, badge: 3 },
     { id: 'workspace' as View, label: 'Workspace', icon: Code2 },
     { id: 'pulls' as View, label: 'Pull requests', icon: GitBranch, badge: prOpen ? 1 : undefined },
@@ -761,7 +824,7 @@ function App() {
       <div className="brand"><span className="brand-mark"><Layers3 size={18} /></span><span>AIWEX</span></div>
       <button className="org-switch" onClick={() => setHomeOverlay(homeOverlay === 'organization' ? 'none' : 'organization')} aria-expanded={homeOverlay === 'organization'}><span className="org-icon">S</span><span><b>SignalDesk</b><small>Pro workspace</small></span><ChevronDown size={15} /></button>
       <nav className="primary-nav">
-        {nav.map((item) => { const locked = !onboardingQualified && !['onboarding', 'feedback'].includes(item.id); return <button key={item.id} disabled={locked} className={`${view === item.id ? 'active' : ''} ${locked ? 'nav-locked' : ''}`} onClick={() => locked ? notify('Complete onboarding and pass the readiness task to unlock the main project.', 'warning') : setView(item.id)}><item.icon size={18} /><span>{item.label}</span>{locked ? <Lock size={12} /> : item.badge && <i>{item.badge}</i>}</button> })}
+        {nav.map((item) => { const locked = !onboardingQualified && !['guide', 'onboarding', 'feedback'].includes(item.id); return <button key={item.id} disabled={locked} className={`${view === item.id ? 'active' : ''} ${locked ? 'nav-locked' : ''}`} onClick={() => locked ? notify('Complete onboarding and pass the readiness task to unlock the main project.', 'warning') : setView(item.id)}><item.icon size={18} /><span>{item.label}</span>{locked ? <Lock size={12} /> : item.badge && <i>{item.badge}</i>}</button> })}
       </nav>
       <div className="sidebar-label">Team spaces</div>
       <div className="team-spaces-list">{teamSpaces.map((space) => <button key={space.id} disabled={!onboardingQualified} className={`team-space ${selectedSpaceId === space.id ? 'active-space' : ''} ${!onboardingQualified ? 'locked-team-space' : ''}`} onClick={() => selectTeamSpace(space.id)}><span>#</span> {space.name} {!onboardingQualified ? <Lock size={11} /> : space.unread > 0 && <b>{space.unread}</b>}</button>)}</div>
@@ -779,14 +842,18 @@ function App() {
         <div className="crumbs"><span>SignalDesk</span><ArrowRight size={13} /><b>{view === 'home' ? 'Today' : view === 'team-space' ? `# ${selectedSpace?.name}` : view === 'agent-profile' ? selectedAgent.name : nav.find((item) => item.id === view)?.label}</b></div>
         <div className="top-actions"><button className="theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}>{resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}<span>{resolvedTheme === 'dark' ? 'Light' : 'Dark'}</span></button><button className="icon-button" onClick={() => setHomeOverlay(homeOverlay === 'search' ? 'none' : 'search')} aria-label="Search organization"><Search size={18} /></button><button className="icon-button notification" onClick={() => setHomeOverlay(homeOverlay === 'notifications' ? 'none' : 'notifications')} aria-label="Open notifications"><Bell size={18} />{unreadNotifications > 0 && <i />}</button><button className="help-button" onClick={() => setHomeOverlay(homeOverlay === 'help' ? 'none' : 'help')} aria-label="Open help for this page">?</button></div>
       </header>
-      {homeOverlay !== 'none' && <HomeControls overlay={homeOverlay} close={() => setHomeOverlay('none')} query={searchQuery} setQuery={setSearchQuery} issues={issues} messages={messages} activity={activity} workspaceCode={workspaceCode} prOpen={prOpen} notifications={notifications} readNotificationIds={readNotificationIds} currentView={view} selectResult={(target, spaceId, notificationId) => { if (spaceId) setSelectedSpaceId(spaceId); if (notificationId) setReadNotificationIds((ids) => ids.includes(notificationId) ? ids : [...ids, notificationId]); setView(target); setHomeOverlay('none') }} markAllNotificationsRead={() => setReadNotificationIds(notifications.map((item) => item.id))} advanceTime={advanceSimulationTime} />}
+      {homeOverlay !== 'none' && <HomeControls overlay={homeOverlay} close={() => setHomeOverlay('none')} query={searchQuery} setQuery={setSearchQuery} issues={issues} messages={messages} activity={activity} workspaceCode={workspaceCode} prOpen={prOpen} notifications={notifications} readNotificationIds={readNotificationIds} currentView={view} selectResult={(target, spaceId, notificationId) => { if (spaceId) setSelectedSpaceId(spaceId); if (notificationId) setReadNotificationIds((ids) => ids.includes(notificationId) ? ids : [...ids, notificationId]); setView(target); setHomeOverlay('none') }} markAllNotificationsRead={() => setReadNotificationIds(notifications.map((item) => item.id))} simulationMinutes={simulationMinutes} isAdvancingTime={isAdvancingTime} advanceTime={advanceSimulationTime} />}
+      {view === 'guide' && <FunctionalLearnerGuideView onNavigate={(target) => setView(target)} />}
       {view === 'onboarding' && <FunctionalOnboardingView organizationId={organizationId} onQualified={() => setOnboardingQualified(true)} openProject={() => setView('home')} />}
-      {view === 'home' && <HomeView standupDone={standupDone} showCeremony={showCeremony} setShowCeremony={setShowCeremony} completeStandup={completeStandup} messages={activeMessages} allMessages={messages} liveEvents={liveEvents} activeChallenges={activeChallenges} scenarioLevel={scenarioLevel} scenarioProgression={scenarioProgression} selectScenarioLevel={selectScenarioLevel} selectedTeamSpace={selectedSpace} draft={draft} setDraft={setDraft} sendMessage={sendMessage} activity={activity} issues={issues} setView={setView} openAgentPortfolio={openAgentPortfolio} testsPassed={testsPassed} committed={committed} prOpen={prOpen} reviewAddressed={reviewAddressed} progress={progress} simulationMinutes={simulationMinutes} advanceTime={() => setHomeOverlay(homeOverlay === 'time' ? 'none' : 'time')} currentIssue={issues.find((issue) => issue.id === 'PROJ-184') || issues.find((issue) => issue.assignee === 'alex')} />}
-      {view === 'calendar' && <FunctionalCalendarView organizationId={organizationId} schedule={calendarSchedule} simulationNow={calendarSimulationNow} onScheduleUpdated={(schedule, now) => { setCalendarSchedule(schedule); setCalendarSimulationNow(now) }} />}
+      {view === 'home' && <HomeView standupDone={standupDone} showCeremony={showCeremony} setShowCeremony={setShowCeremony} completeStandup={completeStandup} messages={activeMessages} allMessages={messages} liveEvents={liveEvents} activeChallenges={activeChallenges} scenarioLevel={scenarioLevel} scenarioProgression={scenarioProgression} selectScenarioLevel={selectScenarioLevel} selectedTeamSpace={selectedSpace} draft={draft} setDraft={setDraft} sendMessage={sendMessage} activity={activity} issues={issues} setView={setView} openAgentPortfolio={openAgentPortfolio} testsPassed={testsPassed} committed={committed} prOpen={prOpen} reviewAddressed={reviewAddressed} progress={progress} simulationMinutes={simulationMinutes} isAdvancingTime={isAdvancingTime} advanceTime={() => setHomeOverlay(homeOverlay === 'time' ? 'none' : 'time')} quickAdvance={(minutes) => void advanceSimulationTime(minutes)} currentIssue={issues.find((issue) => issue.id === (scenarioProgression.currentLevel === scenarioLevel ? scenarioProgression.activeTaskId : taskIdsForScenarioLevel[scenarioLevel][0])) || issues.find((issue) => issue.assignee === 'alex' && issue.status !== 'done')} />}
+      {view === 'calendar' && <FunctionalCalendarView organizationId={organizationId} schedule={calendarSchedule} simulationNow={calendarSimulationNow} onScheduleUpdated={(schedule, now) => { setCalendarSchedule(schedule); setCalendarSimulationNow(now) }} onOpenMeeting={(scheduleId) => { const meeting = meetingForSchedule(scheduleId); if (!meeting) { notify('This calendar item does not use a conference room.', 'warning'); return }; setSelectedMeetingId(meeting.id); setView('meetings') }} />}
+      {view === 'meetings' && <FunctionalMeetingView organizationId={organizationId} selectedMeetingId={selectedMeetingId} onMeetingSelected={setSelectedMeetingId} />}
       {view === 'team-space' && <TeamSpaceView space={selectedSpace} messages={activeMessages} allMessages={messages} followUps={followUps} draft={draft} setDraft={setDraft} sendMessage={sendMessage} sendThreadReply={(message, threadId) => sendMessage(undefined, message, threadId)} updateSpace={updateTeamSpace} updateMessage={updateMessage} deleteMessage={deleteMessage} togglePinMessage={togglePinMessage} markMessage={markMessage} createFollowUp={createFollowUp} completeFollowUp={completeFollowUp} resolveThread={resolveThread} archiveSpace={archiveTeamSpace} openAgentPortfolio={openAgentPortfolio} />}
       {view === 'agent-profile' && <AgentPortfolioView agent={selectedAgent} openTeamSpace={() => selectTeamSpace(selectedAgent.id === 'devon' ? 'engineering' : selectedAgent.id === 'maya' ? 'releases' : 'product-usage')} />}
       {view === 'issues' && <FunctionalIssuesView issues={issues} createIssue={createIssue} updateIssue={updateIssue} openWorkspace={() => setView('workspace')} />}
-      {view === 'workspace' && <FunctionalWorkspaceView files={workspaceFiles} updateFile={updateWorkspaceFile} saveFile={saveWorkspaceFile} testsPassed={testsPassed && Boolean(workspaceValidation)} committed={committed} testOutput={workspaceValidation?.output} testDurationMs={workspaceValidation?.durationMs} runTests={runTests} commit={commit} openPr={openPr} />}
+      {view === 'workspace' && (workspaceSurface === 'theia'
+        ? <FunctionalTheiaWorkspaceView organizationId={organizationId} onReturn={() => setWorkspaceSurface('built-in')} onFileSynchronized={synchronizeTheiaFile} />
+        : <FunctionalWorkspaceView files={workspaceFiles} updateFile={updateWorkspaceFile} saveFile={saveWorkspaceFile} testsPassed={testsPassed && Boolean(workspaceValidation)} committed={committed} testOutput={workspaceValidation?.output} testDurationMs={workspaceValidation?.durationMs} runTests={runTests} commit={commit} openPr={openPr} openTheia={() => setWorkspaceSurface('theia')} />)}
       {view === 'pulls' && <FunctionalPullRequestsView prOpen={prOpen} reviewAddressed={reviewAddressed} reviewReplied={reviewReplied} approved={approved} merged={merged} files={workspaceFiles} addressReview={addressReview} replyToReview={replyToReview} mergePullRequest={mergePullRequest} />}
       {view === 'feedback' && <FunctionalFeedbackView organizationId={organizationId} />}
     </main>
@@ -798,18 +865,31 @@ function formatSimulationTime(minutes: number) {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
 }
 
-function HomeControls({ overlay, close, query, setQuery, issues, messages, activity, workspaceCode, prOpen, notifications, readNotificationIds, currentView, selectResult, markAllNotificationsRead, advanceTime }: { overlay: HomeOverlay; close: () => void; query: string; setQuery: (value: string) => void; issues: WorkIssue[]; messages: TeamMessage[]; activity: ActivityItem[]; workspaceCode: string; prOpen: boolean; notifications: NotificationItem[]; readNotificationIds: string[]; currentView: View; selectResult: (view: View, spaceId?: string, notificationId?: string) => void; markAllNotificationsRead: () => void; advanceTime: (minutes: number) => void }) {
+function nextSimulationCheckpoint(minutes: number) {
+  return simulationCheckpoints.find((checkpoint) => checkpoint.at > minutes) || null
+}
+
+function formatSimulationAdvance(minutes: number) {
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  const remainder = minutes % 60
+  return remainder ? `${hours}h ${remainder}m` : `${hours}h`
+}
+
+function HomeControls({ overlay, close, query, setQuery, issues, messages, activity, workspaceCode, prOpen, notifications, readNotificationIds, currentView, selectResult, markAllNotificationsRead, simulationMinutes, isAdvancingTime, advanceTime }: { overlay: HomeOverlay; close: () => void; query: string; setQuery: (value: string) => void; issues: WorkIssue[]; messages: TeamMessage[]; activity: ActivityItem[]; workspaceCode: string; prOpen: boolean; notifications: NotificationItem[]; readNotificationIds: string[]; currentView: View; selectResult: (view: View, spaceId?: string, notificationId?: string) => void; markAllNotificationsRead: () => void; simulationMinutes: number; isAdvancingTime: boolean; advanceTime: (minutes: number) => void }) {
   const normalizedQuery = query.trim().toLowerCase()
   const issueResults = normalizedQuery ? issues.filter((issue) => `${issue.id} ${issue.title} ${issue.description}`.toLowerCase().includes(normalizedQuery)).slice(0, 4) : []
   const messageResults = normalizedQuery ? messages.filter((message) => `${message.author} ${message.text}`.toLowerCase().includes(normalizedQuery)).slice(0, 4) : []
   const pullResults = normalizedQuery && (`pull request pr #482 code review review requested changes`.includes(normalizedQuery) || normalizedQuery.includes('pr')) ? [{ id: 'pr-482', title: 'PR #482 · Usage alerts empty state', detail: 'Learner pull request and merge gate' }] : []
   const workspaceResults = normalizedQuery && workspaceCode.toLowerCase().includes(normalizedQuery) ? [{ id: 'alerts-panel', title: 'alerts-panel.tsx', detail: 'Match found in the active workspace file' }] : []
   const activityResults = normalizedQuery ? activity.filter((item) => item.text.toLowerCase().includes(normalizedQuery)).slice(0, 4) : []
+  const nextCheckpoint = nextSimulationCheckpoint(simulationMinutes)
+  const nextAdvance = nextCheckpoint ? nextCheckpoint.at - simulationMinutes : 0
   const help = currentView === 'workspace' ? { title: 'Workspace guide', steps: ['Make the implementation yourself; AI teammates can clarify but do not write your assigned solution.', 'Run checks only after protecting the billing CTA with canManageBilling.', 'Commit passing work on your feature branch before opening a PR.'], target: 'workspace' as View, label: 'Open workspace' } : currentView === 'pulls' ? { title: 'Code review guide', steps: ['Read each requested change before marking it addressed.', 'Explain the implementation decision in your review response.', 'Merge remains gated until approval and a rationale are recorded.'], target: 'pulls' as View, label: 'Open pull requests' } : currentView === 'team-space' ? { title: 'Team space guide', steps: ['Keep decisions in the relevant channel so teammates can find context.', 'Use @mentions for a specific teammate and threads for focused follow-up.', 'Use attachments for artifacts; message ownership controls apply only to your posts.'], target: 'team-space' as View, label: 'Open team space' } : currentView === 'issues' ? { title: 'Issue board guide', steps: ['Review acceptance criteria and dependencies before changing status.', 'Update priority, owner, and blockers as scenario facts change.', 'Use the issue workspace link when you are ready to implement.'], target: 'issues' as View, label: 'Open issue board' } : currentView === 'feedback' ? { title: 'Coaching guide', steps: ['Feedback is private and tied to immutable simulation evidence.', 'Use evidence to identify one specific process or communication improvement.', 'Refresh after meaningful actions to review new signals.'], target: 'feedback' as View, label: 'Open coaching' } : { title: 'Today guide', steps: ['Post your stand-up and make dependencies visible.', 'Clarify assumptions before implementation, then test your own change.', 'Use the PR gate to practice review, rationale, and merge discipline.'], target: 'home' as View, label: 'Open today' }
   return <div className="home-overlay-layer" role="presentation" onMouseDown={close}>
     <section className={`home-overlay ${overlay}`} role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
       <button className="overlay-close" onClick={close} aria-label="Close"><X size={16} /></button>
-      {overlay === 'time' && <><span className="eyebrow">SIMULATION CLOCK</span><h2>Advance the workday</h2><p>Time moves only when you choose. Scheduled follow-ups and release pressure are triggered from the scenario state.</p><div className="time-options"><button onClick={() => advanceTime(15)}>+15 min <small>Quick focus block</small></button><button onClick={() => advanceTime(60)}>+1 hour <small>Team check-ins may arrive</small></button><button onClick={() => advanceTime(180)}>+3 hours <small>Move toward stakeholder review</small></button></div></>}
+      {overlay === 'time' && <><span className="eyebrow">SIMULATION CLOCK</span><h2>{formatSimulationTime(simulationMinutes)} · Advance the workday</h2><p>Time moves only when you choose. The next scenario trigger is shown before you advance.</p><div className="time-options">{nextCheckpoint && <button className="next-time-option" type="button" disabled={isAdvancingTime} onClick={() => advanceTime(nextAdvance)}><span><FastForward size={15} /> {isAdvancingTime ? 'Advancing…' : 'Next event'}</span><small>{nextCheckpoint.title} in {formatSimulationAdvance(nextAdvance)}</small></button>}<button type="button" disabled={isAdvancingTime} onClick={() => advanceTime(15)}>+15 min <small>Quick focus block</small></button><button type="button" disabled={isAdvancingTime} onClick={() => advanceTime(60)}>+1 hour <small>Team check-ins may arrive</small></button><button type="button" disabled={isAdvancingTime} onClick={() => advanceTime(180)}>+3 hours <small>Move toward stakeholder review</small></button></div></>}
       {overlay === 'search' && <><span className="eyebrow">ORGANIZATION SEARCH</span><h2>Find work and context</h2><input autoFocus className="global-search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search issues, people, or messages" />{!normalizedQuery ? <p>Search across the current scenario’s issue board and team conversations.</p> : <div className="search-results">{issueResults.map((issue) => <button key={issue.id} onClick={() => selectResult('issues')}><CircleDot size={15} /><span><b>{issue.id} · {issue.title}</b><small>{issue.status.replace('_', ' ')} · {issue.priority} priority</small></span></button>)}{messageResults.map((message, index) => <button key={`${message.id}-${message.spaceId}-${index}`} onClick={() => selectResult('team-space', message.spaceId)}><MessageSquare size={15} /><span><b>{message.author} in #{message.spaceId}</b><small>{message.text.slice(0, 90)}</small></span></button>)}{!issueResults.length && !messageResults.length && <p>No scenario records match “{query}”.</p>}</div>}</>}
       {overlay === 'search' && normalizedQuery && (pullResults.length > 0 || workspaceResults.length > 0 || activityResults.length > 0) && <div className="search-results extended-search-results">{pullResults.map((result) => <button key={result.id} onClick={() => selectResult('pulls')}><GitBranch size={15} /><span><b>{result.title}</b><small>{result.detail}</small></span></button>)}{workspaceResults.map((result) => <button key={result.id} onClick={() => selectResult('workspace')}><Code2 size={15} /><span><b>{result.title}</b><small>{result.detail}</small></span></button>)}{activityResults.map((item) => <button key={item.id} onClick={() => selectResult('feedback')}><Check size={15} /><span><b>Simulation activity</b><small>{item.text}</small></span></button>)}</div>}
       {overlay === 'notifications' && <><div className="notification-title"><div><span className="eyebrow">ACTION REQUIRED</span><h2>Notifications</h2></div><button className="ghost-button" onClick={markAllNotificationsRead}>Mark all read</button></div><div className="notification-list">{notifications.length ? notifications.map((notification) => <button key={notification.id} className={readNotificationIds.includes(notification.id) ? 'notification-read' : ''} onClick={() => selectResult(notification.view, notification.spaceId, notification.id)}><Bell size={16} /><span><b>{notification.title}</b><small>{notification.detail}</small></span><ArrowRight size={14} /></button>) : <p>You are caught up. New scenario events will appear here.</p>}</div></>}
@@ -824,9 +904,11 @@ function ScenarioLevelPanel({ level, progression, selectLevel, challenges }: { l
   return <section className="scenario-level-panel"><div className="scenario-level-head"><div><span className="eyebrow">SIMULATION DIFFICULTY</span><h2>{activePolicy.label} workplace scenario</h2><p>{activePolicy.summary}</p></div><div className="scenario-policy"><b>{activePolicy.activeTaskTarget} active learner task{activePolicy.activeTaskTarget > 1 ? 's' : ''}</b><span>{activePolicy.deadlineLabel} · {activePolicy.agentStyle}</span></div></div><div className="level-options">{(Object.keys(scenarioPolicies) as ScenarioLevel[]).map((item) => { const locked = item !== level && !progression.unlockedLevels.includes(item); return <button key={item} disabled={locked} className={`${level === item ? 'selected-level' : ''} ${locked ? 'locked-level' : ''}`} onClick={() => selectLevel(item)}><b>{scenarioPolicies[item].label}{locked ? ' · locked' : ''}</b><small>{scenarioPolicies[item].activeTaskTarget} task{scenarioPolicies[item].activeTaskTarget > 1 ? 's' : ''} · {scenarioPolicies[item].agentStyle}</small></button>})}</div>{progression.nextLevel && <div className="level-requirements"><b>Unlock {scenarioPolicies[progression.nextLevel].label}</b><span>Coaching readiness: {progression.overallScore}</span>{progression.requirements.map((requirement) => <div key={requirement.label} className={requirement.complete ? 'complete' : ''}><Check size={13} /> {requirement.label}</div>)}</div>}{challenges.length > 0 && <div className="scenario-challenges">{challenges.map((event) => <div className={`scenario-challenge ${String(event.metadata?.severity || 'info')}`} key={event.id}><Bot size={16} /><div><b>{String(event.metadata?.title || 'Scenario update')}</b><span>{String(event.metadata?.message || '')}</span></div></div>)}</div>}</section>
 }
 
-function HomeView(props: { standupDone: boolean; showCeremony: boolean; setShowCeremony: (v: boolean) => void; completeStandup: () => void; messages: TeamMessage[]; allMessages: TeamMessage[]; liveEvents: SimulationEvent[]; activeChallenges: SimulationEvent[]; scenarioLevel: ScenarioLevel; scenarioProgression: ScenarioProgression; selectScenarioLevel: (level: ScenarioLevel) => void; selectedTeamSpace: TeamSpace; draft: string; setDraft: (v: string) => void; sendMessage: (attachment?: TeamAttachment) => void; activity: ActivityItem[]; issues: WorkIssue[]; setView: (v: View) => void; openAgentPortfolio: (id: string) => void; testsPassed: boolean; committed: boolean; prOpen: boolean; reviewAddressed: boolean; progress: number; simulationMinutes: number; advanceTime: () => void; currentIssue?: WorkIssue }) {
-  const { standupDone, showCeremony, setShowCeremony, completeStandup, messages, allMessages, liveEvents, activeChallenges, scenarioLevel, scenarioProgression, selectScenarioLevel, selectedTeamSpace, draft, setDraft, sendMessage, activity, issues, setView, openAgentPortfolio, testsPassed, committed, prOpen, reviewAddressed, progress, simulationMinutes, advanceTime, currentIssue } = props
+function HomeView(props: { standupDone: boolean; showCeremony: boolean; setShowCeremony: (v: boolean) => void; completeStandup: () => void; messages: TeamMessage[]; allMessages: TeamMessage[]; liveEvents: SimulationEvent[]; activeChallenges: SimulationEvent[]; scenarioLevel: ScenarioLevel; scenarioProgression: ScenarioProgression; selectScenarioLevel: (level: ScenarioLevel) => void; selectedTeamSpace: TeamSpace; draft: string; setDraft: (v: string) => void; sendMessage: (attachment?: TeamAttachment) => void; activity: ActivityItem[]; issues: WorkIssue[]; setView: (v: View) => void; openAgentPortfolio: (id: string) => void; testsPassed: boolean; committed: boolean; prOpen: boolean; reviewAddressed: boolean; progress: number; simulationMinutes: number; isAdvancingTime: boolean; advanceTime: () => void; quickAdvance: (minutes: number) => void; currentIssue?: WorkIssue }) {
+  const { standupDone, showCeremony, setShowCeremony, completeStandup, messages, allMessages, liveEvents, activeChallenges, scenarioLevel, scenarioProgression, selectScenarioLevel, selectedTeamSpace, draft, setDraft, sendMessage, activity, issues, setView, openAgentPortfolio, testsPassed, committed, prOpen, reviewAddressed, progress, simulationMinutes, isAdvancingTime, advanceTime, quickAdvance, currentIssue } = props
   const task = currentIssue || seededIssues[0]
+  const nextCheckpoint = nextSimulationCheckpoint(simulationMinutes)
+  const nextAdvance = nextCheckpoint ? nextCheckpoint.at - simulationMinutes : 0
   const nextStep = !standupDone
     ? { title: 'Post your stand-up', detail: 'Make today’s work and any dependency risks visible to the team.', label: 'Post update', action: () => setShowCeremony(true) }
     : !testsPassed
@@ -839,6 +921,7 @@ function HomeView(props: { standupDone: boolean; showCeremony: boolean; setShowC
             ? { title: 'Address the review', detail: 'Resolve the requested change and explain the decision to Noah.', label: 'Open review', action: () => setView('pulls') }
             : { title: 'Keep the release moving', detail: 'Reply to the review, record the rationale, and complete the merge gate.', label: 'Open review', action: () => setView('pulls') }
   return <div className="page home-page">
+    <section className="simulation-clock-card" aria-label="Simulation time controls" aria-busy={isAdvancingTime}><div className="simulation-clock-summary"><span className="eyebrow">LEARNER-CONTROLLED PACE</span><div><Clock3 size={19} /><b>{formatSimulationTime(simulationMinutes)}</b><span>Simulated time</span></div><p>{nextCheckpoint ? `${nextCheckpoint.title} is next. ${nextCheckpoint.detail}` : 'Today’s planned scenario triggers are complete. Continue with your project work or adjust the clock.'}</p></div><div className="simulation-time-actions">{nextCheckpoint && <button className="next-event-button" type="button" disabled={isAdvancingTime} onClick={() => quickAdvance(nextAdvance)}><FastForward size={16} /><span><b>{isAdvancingTime ? 'Advancing…' : 'Next event'}</b><small>{nextCheckpoint.title} · in {formatSimulationAdvance(nextAdvance)}</small></span></button>}<button className="time-increment-button" type="button" disabled={isAdvancingTime} onClick={() => quickAdvance(15)}>+15m</button><button className="time-increment-button" type="button" disabled={isAdvancingTime} onClick={() => quickAdvance(60)}>+1h</button><button className="time-adjust-button" type="button" disabled={isAdvancingTime} onClick={advanceTime}>More</button></div></section>
     <section className="welcome"><div><p className="eyebrow">WEDNESDAY, SEPTEMBER 18 · SPRINT 2 OF 3</p><h1>Good morning, Alex <span>✦</span></h1><p>Here’s what needs your attention in SignalDesk today.</p></div><button className="time-button" onClick={advanceTime}><Clock3 size={16} /> Simulated time <b>{formatSimulationTime(simulationMinutes)}</b><ChevronDown size={14} /></button></section>
     <ScenarioLevelPanel level={scenarioLevel} progression={scenarioProgression} selectLevel={selectScenarioLevel} challenges={activeChallenges} />
     <section className="priority-grid">

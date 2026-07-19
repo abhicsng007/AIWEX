@@ -184,6 +184,7 @@ export function quizAnswerFeedback(slide: TrainingSlide, correct: boolean) {
 export type OnboardingPhase = 'not_started' | 'profile' | 'policy' | 'access' | 'training' | 'remediation' | 'demo_task' | 'qualified'
 export type ScheduleItem = { id: string; title: string; startsAt: string; endsAt: string; kind: 'ceremony' | 'focus' | 'deadline'; completed: boolean; missed: boolean; extensionRequested: boolean; extensionDecision?: 'pending' | 'approved' | 'declined' }
 export type ReadinessEvaluation = { score: number; passed: boolean; feedback: string; criteria: { label: string; met: boolean; evidence: string }[] }
+export type ReadinessQuestion = { id: string; label: string; prompt: string; options: string[]; correctOption: number; evidence: string }
 export type OnboardingState = {
   phase: OnboardingPhase
   profile: EmployeeProfile
@@ -307,35 +308,55 @@ export function publicOnboardingState(state: OnboardingState): PublicOnboardingS
   return { ...rest, currentSlide: safeSlide }
 }
 
-export function evaluateReadinessSubmission(submission: string): ReadinessEvaluation {
-  const normalized = submission.toLowerCase()
-  const criteria = [
-    {
-      label: 'Permission boundary',
-      met: /canmanagebilling|can manage billing|billing guard/.test(normalized) && /(server|route|api|handler|boundary)/.test(normalized),
-      evidence: 'Names canManageBilling and explains where the protected action is enforced.',
-    },
-    {
-      label: 'Legacy customer state',
-      met: /(legacy|older workspace|existing workspace|empty state|usage threshold|threshold)/.test(normalized),
-      evidence: 'Preserves the empty state or threshold context for legacy workspaces.',
-    },
-    {
-      label: 'Security and data handling',
-      met: /(customer data|credential|secret|privacy|service-role|service role|authorization|permission)/.test(normalized),
-      evidence: 'Shows awareness of protected data, credentials, or authorization risk.',
-    },
-    {
-      label: 'Validation evidence',
-      met: /(test|check|validat|regression|role coverage|restricted role|allowed role)/.test(normalized),
-      evidence: 'States focused validation for allowed and restricted role behavior.',
-    },
-    {
-      label: 'Communication and delivery',
-      met: submission.trim().length >= 160 && /(pr|pull request|review|risk|handoff|acceptance criteria|release)/.test(normalized),
-      evidence: 'Explains review communication, risk, handoff, or acceptance evidence.',
-    },
-  ]
+export const readinessQuestions: ReadinessQuestion[] = [
+  {
+    id: 'permission-boundary',
+    label: 'Permission boundary',
+    prompt: 'Where should the rule that protects the billing-management action be enforced?',
+    options: ['Only by hiding the UI button', 'At the server route or action boundary with canManageBilling', 'In a team message after the change ships'],
+    correctOption: 1,
+    evidence: 'Protect the action at the server boundary with canManageBilling; hiding a control is not authorization.',
+  },
+  {
+    id: 'legacy-customer-state',
+    label: 'Legacy customer state',
+    prompt: 'What should an older workspace with no usage threshold experience?',
+    options: ['A helpful explanatory empty state', 'A billing-management action for every role', 'A blank page until a migration completes'],
+    correctOption: 0,
+    evidence: 'Preserve a helpful empty state and the legacy threshold context for existing customers.',
+  },
+  {
+    id: 'security-data-handling',
+    label: 'Security and data handling',
+    prompt: 'How should privileged service-role credentials be handled in this workflow?',
+    options: ['Keep them only in server-side environment and route code', 'Place them in the client component for easier debugging', 'Share them in a private team-space thread'],
+    correctOption: 0,
+    evidence: 'Service-role credentials stay server-side and are never exposed to browser code or team messages.',
+  },
+  {
+    id: 'validation-evidence',
+    label: 'Validation evidence',
+    prompt: 'Which validation set best supports this implementation?',
+    options: ['Check only the happy path for an allowed user', 'Test allowed and restricted roles plus the legacy empty state', 'Skip checks because the component is small'],
+    correctOption: 1,
+    evidence: 'Validation should cover allowed roles, restricted roles, and the preserved legacy customer state.',
+  },
+  {
+    id: 'communication-delivery',
+    label: 'Communication and delivery',
+    prompt: 'What is the right delivery record before the change is merged?',
+    options: ['Open a pull request with validation evidence and any risk or handoff', 'Merge directly after local edits', 'Wait for a teammate to discover the change'],
+    correctOption: 0,
+    evidence: 'Record the rationale, validation evidence, and any delivery risk in the pull request or handoff.',
+  },
+]
+
+export function evaluateReadinessAnswers(answers: Record<string, number>): ReadinessEvaluation {
+  const criteria = readinessQuestions.map((question) => ({
+    label: question.label,
+    met: answers[question.id] === question.correctOption,
+    evidence: question.evidence,
+  }))
   const score = criteria.filter((criterion) => criterion.met).length * 20
   const missing = criteria.filter((criterion) => !criterion.met).map((criterion) => criterion.label)
   return {
@@ -344,11 +365,6 @@ export function evaluateReadinessSubmission(submission: string): ReadinessEvalua
     criteria,
     feedback: missing.length ? `Readiness score: ${score}/100. Strengthen: ${missing.join(', ')}.` : `Readiness score: ${score}/100. Your evidence covers permission safety, legacy behavior, security, validation, and delivery communication.`,
   }
-}
-
-export function readinessSubmissionError(submission: string) {
-  const evaluation = evaluateReadinessSubmission(submission)
-  return evaluation.passed ? null : evaluation.feedback
 }
 
 export function simulationNow(events: SimulationEvent[], actualNow = new Date()) {

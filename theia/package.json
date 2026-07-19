@@ -1,0 +1,14 @@
+{
+  "name": "aiwex-theia-workbench",
+  "private": true,
+  "packageManager": "yarn@1.22.22",
+  "workspaces": [
+    "browser-app",
+    "extensions/*"
+  ],
+  "scripts": {
+    "build": "yarn workspace aiwex-theia-bridge build && yarn workspace aiwex-theia-browser bundle",
+    "start": "yarn workspace aiwex-theia-bridge build && yarn workspace aiwex-theia-browser start",
+    "watch": "yarn workspace aiwex-theia-browser watch"
+  }
+}

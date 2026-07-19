@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { accessCatalog, deriveOnboardingState, evaluateReadinessSubmission, nextScheduleStart, policyRequirements, publicOnboardingState, quizAnswerFeedback, trainingSlides } from '@/features/simulator/domain/onboarding'
+import { accessCatalog, deriveOnboardingState, evaluateReadinessAnswers, nextScheduleStart, policyRequirements, publicOnboardingState, quizAnswerFeedback, readinessQuestions, trainingSlides } from '@/features/simulator/domain/onboarding'
 import { inMemoryEventStore } from '@/features/simulator/server/event-store'
 import type { SimulationEvent } from '@/features/simulator/domain/types'
 import { simulationRunIdentity } from '@/features/auth/server-auth'
 
 const append = (organizationId: string, type: SimulationEvent['type'], metadata: Record<string, string | number | boolean> = {}): SimulationEvent => ({ id: crypto.randomUUID(), organizationId, type, createdAt: new Date().toISOString(), metadata })
+const publicReadinessQuestions = () => readinessQuestions.map(({ correctOption, ...question }) => question)
 
 export async function GET(request: NextRequest) {
   const identity = await simulationRunIdentity(request, request.nextUrl.searchParams.get('organizationId'))
   if (!identity) return NextResponse.json({ error: 'Sign in to access this simulation run.' }, { status: 401 })
-  try { return NextResponse.json({ state: publicOnboardingState(deriveOnboardingState(await inMemoryEventStore.list(identity.runId))), slides: trainingSlides.map(({ correctOption, ...slide }) => slide) }) }
+  try { return NextResponse.json({ state: publicOnboardingState(deriveOnboardingState(await inMemoryEventStore.list(identity.runId))), slides: trainingSlides.map(({ correctOption, ...slide }) => slide), readinessQuestions: publicReadinessQuestions() }) }
   catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Onboarding is unavailable.' }, { status: 503 }) }
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json() as { organizationId?: string; action?: 'start' | 'confirm_profile' | 'acknowledge_policy' | 'provision_access' | 'submit_quiz' | 'resume_readiness' | 'submit_readiness'; policyId?: string; accessId?: string; slideId?: string; answer?: number; submission?: string }
+  const body = await request.json() as { organizationId?: string; action?: 'start' | 'confirm_profile' | 'acknowledge_policy' | 'provision_access' | 'submit_quiz' | 'resume_readiness' | 'submit_readiness'; policyId?: string; accessId?: string; slideId?: string; answer?: number; answers?: Record<string, number> }
   if (!body.action) return NextResponse.json({ error: 'An onboarding action is required' }, { status: 400 })
   const identity = await simulationRunIdentity(request, body.organizationId)
   if (!identity) return NextResponse.json({ error: 'Sign in to access this simulation run.' }, { status: 401 })
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest) {
   const events = await inMemoryEventStore.list(organizationId)
   const state = deriveOnboardingState(events)
   if (body.action === 'start') {
-    if (state.phase !== 'not_started') return NextResponse.json({ state: publicOnboardingState(state), slides: trainingSlides.map(({ correctOption, ...slide }) => slide) })
+    if (state.phase !== 'not_started') return NextResponse.json({ state: publicOnboardingState(state), slides: trainingSlides.map(({ correctOption, ...slide }) => slide), readinessQuestions: publicReadinessQuestions() })
     await inMemoryEventStore.append(append(organizationId, 'onboarding_started'))
   }
   if (body.action === 'confirm_profile') {
@@ -57,17 +58,24 @@ export async function POST(request: NextRequest) {
   }
   if (body.action === 'submit_readiness') {
     if (state.phase !== 'demo_task') return NextResponse.json({ error: 'Complete the knowledge sessions before the readiness task.' }, { status: 409 })
-    const submission = String(body.submission || '')
+    const answers = body.answers && typeof body.answers === 'object' && !Array.isArray(body.answers) ? body.answers : null
+    const allQuestionsAnswered = answers && readinessQuestions.every((question) => {
+      const answer = answers[question.id]
+      return Number.isInteger(answer) && answer >= 0 && answer < question.options.length
+    })
+    if (!allQuestionsAnswered || !answers) return NextResponse.json({ error: 'Select one answer for every readiness question before submitting.' }, { status: 400 })
     await inMemoryEventStore.append(append(organizationId, 'readiness_task_started', { attempt: state.readinessAttempts + 1 }))
-    const evaluation = evaluateReadinessSubmission(submission)
+    const evaluation = evaluateReadinessAnswers(answers)
     if (!evaluation.passed) {
       await inMemoryEventStore.append(append(organizationId, 'readiness_task_retry_required', { feedback: evaluation.feedback, score: evaluation.score }))
-      return NextResponse.json({ qualified: false, feedback: evaluation.feedback, score: evaluation.score, state: publicOnboardingState(deriveOnboardingState(await inMemoryEventStore.list(organizationId))) })
+      return NextResponse.json({ qualified: false, feedback: evaluation.feedback, score: evaluation.score, evaluation, state: publicOnboardingState(deriveOnboardingState(await inMemoryEventStore.list(organizationId))), slides: trainingSlides.map(({ correctOption, ...slide }) => slide), readinessQuestions: publicReadinessQuestions() })
     }
-    await inMemoryEventStore.append(append(organizationId, 'readiness_task_passed', { evidence: 'organizational_readiness_rubric', score: evaluation.score }))
+    await inMemoryEventStore.append(append(organizationId, 'readiness_task_passed', { evidence: 'organizational_readiness_mcq', score: evaluation.score }))
     await inMemoryEventStore.append(append(organizationId, 'manager_signoff_recorded', { reviewer: state.profile.manager, score: evaluation.score, decision: 'approved_for_project_access' }))
     await inMemoryEventStore.append(append(organizationId, 'schedule_created', { startAt: nextScheduleStart(), timezone: String(request.headers.get('x-timezone') || 'UTC') }))
+    const nextEvents = await inMemoryEventStore.list(organizationId)
+    return NextResponse.json({ qualified: true, feedback: evaluation.feedback, score: evaluation.score, evaluation, state: publicOnboardingState(deriveOnboardingState(nextEvents)), slides: trainingSlides.map(({ correctOption, ...slide }) => slide), readinessQuestions: publicReadinessQuestions() }, { status: 201 })
   }
   const nextEvents = await inMemoryEventStore.list(organizationId)
-  return NextResponse.json({ state: publicOnboardingState(deriveOnboardingState(nextEvents)), slides: trainingSlides.map(({ correctOption, ...slide }) => slide) }, { status: 201 })
+  return NextResponse.json({ state: publicOnboardingState(deriveOnboardingState(nextEvents)), slides: trainingSlides.map(({ correctOption, ...slide }) => slide), readinessQuestions: publicReadinessQuestions() }, { status: 201 })
 }

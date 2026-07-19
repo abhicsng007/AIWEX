@@ -1,5 +1,12 @@
 import type { SimulationEvent, SimulationEventType, WorkflowState } from './types'
 
+export type ActiveDeliveryCycle = {
+  level: 'basic' | 'intermediate' | 'advanced'
+  taskId: string
+  sequence: number
+  startedAt: string
+}
+
 export const initialWorkflowState: WorkflowState = {
   standupPosted: false,
   checksPassed: false,
@@ -12,8 +19,33 @@ export const initialWorkflowState: WorkflowState = {
   merged: false,
 }
 
+/**
+ * Returns the task currently being delivered. A delivery cycle is deliberately
+ * represented in the immutable event ledger, so a refresh or another browser
+ * cannot accidentally reopen a completed pull request.
+ */
+export function activeDeliveryCycle(events: SimulationEvent[]): ActiveDeliveryCycle | null {
+  const event = [...events].reverse().find((item) => item.type === 'delivery_cycle_started')
+  if (!event) return null
+  const level = event.metadata?.level
+  const taskId = event.metadata?.taskId
+  if ((level !== 'basic' && level !== 'intermediate' && level !== 'advanced') || typeof taskId !== 'string' || !taskId) return null
+  const sequence = Number(event.metadata?.sequence)
+  return { level, taskId, sequence: Number.isFinite(sequence) && sequence > 0 ? sequence : 1, startedAt: event.createdAt }
+}
+
+function workflowStartIndex(events: SimulationEvent[]) {
+  // Older runs do not have delivery-cycle events. Their latest level selection
+  // remains a safe compatibility boundary and prevents a Basic merge from
+  // contaminating a later Intermediate or Advanced task.
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    if (events[index].type === 'delivery_cycle_started' || events[index].type === 'scenario_level_selected') return index + 1
+  }
+  return 0
+}
+
 export function deriveWorkflowState(events: SimulationEvent[]): WorkflowState {
-  return events.reduce<WorkflowState>((state, event) => {
+  return events.slice(workflowStartIndex(events)).reduce<WorkflowState>((state, event) => {
     switch (event.type) {
       case 'standup_posted': return { ...state, standupPosted: true }
       case 'checks_passed': return { ...state, checksPassed: true }
@@ -30,7 +62,7 @@ export function deriveWorkflowState(events: SimulationEvent[]): WorkflowState {
 }
 
 export function validateWorkflowTransition(state: WorkflowState, type: SimulationEventType, metadata?: SimulationEvent['metadata']): string | null {
-  if (state.merged && !['chat_message', 'agent_reply', 'simulation_time_advanced', 'team_space_created', 'team_space_updated', 'chat_message_edited', 'chat_message_deleted', 'message_pinned', 'message_marked_decision', 'message_marked_risk', 'message_marked_question', 'message_marked_handoff', 'message_marked_blocker', 'thread_resolved', 'followup_created', 'followup_completed', 'space_archived', 'space_member_added', 'space_member_removed', 'scenario_level_selected', 'task_completed', 'level_unlocked', 'load_test_recorded', 'scenario_deployment_recorded'].includes(type)) return 'This pull request is already merged.'
+  if (state.merged && !['chat_message', 'agent_reply', 'simulation_time_advanced', 'team_space_created', 'team_space_updated', 'chat_message_edited', 'chat_message_deleted', 'message_pinned', 'message_marked_decision', 'message_marked_risk', 'message_marked_question', 'message_marked_handoff', 'message_marked_blocker', 'thread_resolved', 'followup_created', 'followup_completed', 'space_archived', 'space_member_added', 'space_member_removed', 'scenario_level_selected', 'delivery_cycle_started', 'task_completed', 'level_unlocked', 'load_test_recorded', 'scenario_deployment_recorded'].includes(type)) return 'This pull request is already merged.'
   if (type === 'standup_posted' && state.standupPosted) return 'Today’s stand-up was already posted.'
   if (type === 'checks_passed' && state.committed) return 'Create a new branch change before running checks again.'
   if (type === 'commit_created' && !state.checksPassed) return 'Pass the branch checks before committing.'

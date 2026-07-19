@@ -1,6 +1,7 @@
 import { assessSimulation, type AssessmentDimension } from './assessment'
-import { scenarioLevelFromEvents, type ScenarioLevel } from './difficulty'
+import { scenarioLevelFromEvents, taskIdsForScenarioLevel, type ScenarioLevel } from './difficulty'
 import type { SimulationEvent } from './types'
+import { activeDeliveryCycle, deriveWorkflowState } from './workflow'
 
 type Requirement = { label: string; complete: boolean }
 export type ScenarioProgression = {
@@ -11,6 +12,8 @@ export type ScenarioProgression = {
   nextLevel: Exclude<ScenarioLevel, 'advanced'> | 'advanced' | null
   requirements: Requirement[]
   unlockedLevels: ScenarioLevel[]
+  activeTaskId: string | null
+  pendingTaskIds: string[]
 }
 
 const average = (scores: Record<AssessmentDimension, number>) => Math.round(Object.values(scores).reduce((total, score) => total + score, 0) / 4)
@@ -26,7 +29,7 @@ function requirementsFor(level: ScenarioLevel, events: SimulationEvent[], scores
   if (level === 'intermediate') return [
     { label: `Complete 2 Intermediate tasks through the merge gate (${completed.length}/2)`, complete: completed.length >= 2 },
     { label: `Reach overall coaching readiness of 70 (${overallScore}/70)`, complete: overallScore >= 70 },
-    { label: `Reach technical, collaboration, and process signals of 65 (${scores.technicalExecution}/65, ${scores.collaboration}/65, ${scores.processFit}/65)`, complete: scores.technicalExecution >= 65 && scores.collaboration >= 65 && scores.processFit >= 65 },
+    { label: `Reach technical, collaboration, and process signals of 65 (send one context-rich teammate message; ${scores.technicalExecution}/65, ${scores.collaboration}/65, ${scores.processFit}/65)`, complete: scores.technicalExecution >= 65 && scores.collaboration >= 65 && scores.processFit >= 65 },
   ]
   return []
 }
@@ -42,7 +45,11 @@ export function deriveScenarioProgression(events: SimulationEvent[]): ScenarioPr
   if (basicRequirements.every((item) => item.complete)) unlockedLevels.push('intermediate')
   const intermediateRequirements = requirementsFor('intermediate', events, report.scores, overallScore)
   if (unlockedLevels.includes('intermediate') && intermediateRequirements.every((item) => item.complete)) unlockedLevels.push('advanced')
-  return { currentLevel, completedTaskIds: completionsFor(events, currentLevel), scores: report.scores, overallScore, nextLevel, requirements, unlockedLevels }
+  const completedTaskIds = completionsFor(events, currentLevel)
+  const pendingTaskIds = taskIdsForScenarioLevel[currentLevel].filter((id) => !completedTaskIds.includes(id))
+  const activeCycle = activeDeliveryCycle(events)
+  const activeTaskId = activeCycle?.level === currentLevel ? activeCycle.taskId : pendingTaskIds[0] || null
+  return { currentLevel, completedTaskIds, scores: report.scores, overallScore, nextLevel, requirements, unlockedLevels, activeTaskId, pendingTaskIds }
 }
 
 export function scenarioLevelChangeError(events: SimulationEvent[], desiredLevel: ScenarioLevel) {
@@ -59,9 +66,13 @@ export function taskCompletionError(events: SimulationEvent[], metadata: Simulat
   const issueId = String(metadata?.issueId || '')
   const level = metadata?.level
   if (!issueId || !['basic', 'intermediate', 'advanced'].includes(String(level))) return 'Task completion requires an assigned issue and scenario level.'
-  if (level !== scenarioLevelFromEvents(events)) return 'A task can only be completed in the active scenario level.'
+  const scenarioLevel = level as ScenarioLevel
+  if (scenarioLevel !== scenarioLevelFromEvents(events)) return 'A task can only be completed in the active scenario level.'
+  if (!taskIdsForScenarioLevel[scenarioLevel].includes(issueId)) return 'This issue is not assigned to the current scenario level.'
   if (events.some((event) => event.type === 'task_completed' && event.metadata?.issueId === issueId)) return 'This task completion was already recorded.'
-  const merged = events.some((event) => event.type === 'pull_request_merged')
-  if (!merged) return 'Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete.'
+  const activeCycle = activeDeliveryCycle(events)
+  if (activeCycle && (activeCycle.level !== scenarioLevel || activeCycle.taskId !== issueId)) return `Complete ${activeCycle.taskId} before moving to ${issueId}.`
+  const workflow = deriveWorkflowState(events)
+  if (!workflow.merged) return 'Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete.'
   return null
 }

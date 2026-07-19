@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import type { NextRequest } from 'next/server'
+import { demoRunFromRequest } from './demo-session'
 
 type AuthenticatedActor = {
   id: string
@@ -9,6 +10,7 @@ type AuthenticatedActor = {
 export type SimulationRunIdentity = {
   actor: AuthenticatedActor
   runId: string
+  isDemo: boolean
 }
 
 /**
@@ -39,10 +41,11 @@ export async function authenticatedActor(request: NextRequest): Promise<Authenti
 
 export async function simulationRunIdentity(request: NextRequest, requestedRunId?: string | null): Promise<SimulationRunIdentity | null> {
   const actor = await authenticatedActor(request)
-  if (!actor) return null
-  const runId = runIdForUser(actor.id)
+  const demoRunId = actor ? null : demoRunFromRequest(request)
+  if (!actor && !demoRunId) return null
+  const runId = actor ? runIdForUser(actor.id) : demoRunId!
   // During the migration clients may omit the id, but they can never select a
   // different run. This is the server-side tenancy boundary for every route.
   if (requestedRunId && requestedRunId !== runId) return null
-  return { actor, runId }
+  return { actor: actor || { id: `guest-${runId}`, email: null }, runId, isDemo: Boolean(demoRunId) }
 }

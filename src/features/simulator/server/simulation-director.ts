@@ -1,5 +1,6 @@
 import { deriveOnboardingState, scheduleFromEvents, simulationNow } from '@/features/simulator/domain/onboarding'
-import { deriveWorkflowState } from '@/features/simulator/domain/workflow'
+import { activeDeliveryCycle, deriveWorkflowState } from '@/features/simulator/domain/workflow'
+import { scenarioLevelFromEvents } from '@/features/simulator/domain/difficulty'
 import type { SimulationEvent } from '@/features/simulator/domain/types'
 import { inMemoryEventStore } from './event-store'
 import { nextScenarioChallenge } from './scenario-director'
@@ -21,15 +22,19 @@ export async function releaseSimulationWork(organizationId: string): Promise<Dir
   const released: SimulationEvent[] = []
   const triggers = new Set(events.filter((event) => event.type === 'agent_reply').map((event) => String(event.metadata?.trigger || '')))
   const workflow = deriveWorkflowState(events)
+  const cycle = activeDeliveryCycle(events)
+  const level = scenarioLevelFromEvents(events)
+  const taskId = cycle?.level === level ? cycle.taskId : level === 'basic' ? 'PROJ-184' : level === 'intermediate' ? 'PROJ-191' : 'PROJ-203'
+  const cycleKey = `${level}-${taskId}-${cycle?.sequence || 1}`
   const scenario = nextScenarioChallenge(events)
-  const fallback = !workflow.standupPosted && !triggers.has('standup-reminder')
-    ? { trigger: 'standup-reminder', agentId: 'maya', channelId: 'product-usage', action: 'post_message', message: '@alex, please post your stand-up before implementation so I can keep the dependency plan accurate.' }
-    : workflow.checksPassed && !workflow.pullRequestOpened && !triggers.has('review-prep')
-      ? { trigger: 'review-prep', agentId: 'noah', channelId: 'engineering', action: 'request_review', message: '@alex, checks are green. Open the PR with the restricted-role validation so I can use the scheduled review window effectively.' }
-      : workflow.pullRequestOpened && !workflow.reviewAddressed && !triggers.has('review-reminder')
-        ? { trigger: 'review-reminder', agentId: 'noah', channelId: 'engineering', action: 'raise_blocker', message: '@alex, the role-guard concern is blocking approval. Resolve it and explain the validation before the review window closes.' }
-        : workflow.approvalGranted && !workflow.merged && !triggers.has('merge-reminder')
-          ? { trigger: 'merge-reminder', agentId: 'maya', channelId: 'releases', action: 'schedule_ceremony', message: 'The review gate is clear. Record the merge rationale so the release train has a durable decision trail.' }
+  const fallback = !workflow.standupPosted && !triggers.has(`standup-reminder-${cycleKey}`)
+    ? { trigger: `standup-reminder-${cycleKey}`, agentId: 'maya', channelId: 'product-usage', action: 'post_message', message: `@alex, please post the ${taskId} stand-up before implementation so I can keep the dependency plan accurate.` }
+    : workflow.checksPassed && !workflow.pullRequestOpened && !triggers.has(`review-prep-${cycleKey}`)
+      ? { trigger: `review-prep-${cycleKey}`, agentId: 'noah', channelId: 'engineering', action: 'request_review', message: `@alex, ${taskId} checks are green. Open the PR with the validation evidence so I can use the scheduled review window effectively.` }
+      : workflow.pullRequestOpened && !workflow.reviewAddressed && !triggers.has(`review-reminder-${cycleKey}`)
+        ? { trigger: `review-reminder-${cycleKey}`, agentId: 'noah', channelId: 'engineering', action: 'raise_blocker', message: `@alex, the ${taskId} review concern is blocking approval. Resolve it and explain the validation before the review window closes.` }
+        : workflow.approvalGranted && !workflow.merged && !triggers.has(`merge-reminder-${cycleKey}`)
+          ? { trigger: `merge-reminder-${cycleKey}`, agentId: 'maya', channelId: 'releases', action: 'schedule_ceremony', message: `The ${taskId} review gate is clear. Record the merge rationale so the release train has a durable decision trail.` }
           : null
   const candidate = scenario ? { ...scenario, action: 'raise_blocker' } : fallback
   if (candidate && !triggers.has(candidate.trigger)) {

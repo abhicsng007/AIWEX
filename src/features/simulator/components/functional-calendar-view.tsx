@@ -15,6 +15,7 @@ type Props = {
   schedule: ScheduleItem[]
   simulationNow: string
   onScheduleUpdated: (schedule: ScheduleItem[], simulationNow: string) => void
+  onOpenMeeting: (scheduleId: string) => void
 }
 
 const channelFor = (item: ScheduleItem) => item.kind === 'focus' ? 'engineering' : item.kind === 'deadline' ? 'releases' : 'product-usage'
@@ -42,7 +43,7 @@ function relativeStart(item: ScheduleItem, now: number) {
   return 'Scheduled ' + dayLabel(item.startsAt)
 }
 
-export default function FunctionalCalendarView({ organizationId, schedule, simulationNow, onScheduleUpdated }: Props) {
+export default function FunctionalCalendarView({ organizationId, schedule, simulationNow, onScheduleUpdated, onOpenMeeting }: Props) {
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [feedback, setFeedback] = useState('')
   const currentTime = Date.parse(simulationNow)
@@ -124,6 +125,7 @@ export default function FunctionalCalendarView({ organizationId, schedule, simul
                     : item.missed ? <span className="calendar-overdue"><CircleAlert size={14} /> Missed</span>
                       : <>{canComplete && <button className="primary-button" disabled={pendingId === item.id} onClick={() => void updateSchedule('complete', item.id)}>{pendingId === item.id ? 'Saving...' : <><Check size={14} /> Mark complete</>}</button>}
                         {canRequestExtension && <button className="ghost-button" disabled={pendingId === item.id} onClick={() => void updateSchedule('request_extension', item.id)}>{pendingId === item.id ? 'Sending...' : 'Request recovery'}</button>}
+                        {item.kind === 'ceremony' && <button className="ghost-button" onClick={() => onOpenMeeting(item.id)}><UsersRound size={14} /> Open room</button>}
                         {item.extensionRequested && item.extensionDecision !== 'approved' && <span className="calendar-awaiting">Manager reviewing recovery</span>}
                         {!canComplete && !canRequestExtension && !item.extensionRequested && <span className="calendar-upcoming">{relativeStart(item, now)}</span>}
                       </>}

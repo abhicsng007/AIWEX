@@ -1,0 +1,29 @@
+{
+  "name": "aiwex-theia-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "keywords": [
+    "theia-extension"
+  ],
+  "files": [
+    "lib",
+    "src"
+  ],
+  "dependencies": {
+    "@theia/core": "1.71.2",
+    "@theia/filesystem": "1.71.2",
+    "@theia/workspace": "1.71.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -w -p tsconfig.json"
+  },
+  "theiaExtensions": [
+    {
+      "frontend": "lib/browser/aiwex-theia-bridge-frontend-module"
+    }
+  ]
+}

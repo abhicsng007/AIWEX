@@ -30,6 +30,7 @@ export type SimulationEventType =
   | 'space_member_added'
   | 'space_member_removed'
   | 'scenario_level_selected'
+  | 'delivery_cycle_started'
   | 'task_completed'
   | 'level_unlocked'
   | 'onboarding_started'
@@ -61,6 +62,12 @@ export type SimulationEventType =
   | 'agent_blocker_raised'
   | 'agent_ceremony_scheduled'
   | 'deadline_extension_decided'
+  | 'meeting_started'
+  | 'meeting_message_posted'
+  | 'meeting_agent_replied'
+  | 'meeting_reaction_added'
+  | 'meeting_ended'
+  | 'meeting_decision_recorded'
 
 export type SimulationMetadata = Record<string, unknown>
 

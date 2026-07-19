@@ -6,11 +6,12 @@ import {
   ExternalLink, FileCheck2, GraduationCap, KeyRound, Layers3, Lock, Play, RotateCcw, ShieldCheck,
   UserRound, UsersRound,
 } from 'lucide-react'
-import { trainingPhases, type PublicOnboardingState, type TrainingSlide } from '@/features/simulator/domain/onboarding'
+import { trainingPhases, type PublicOnboardingState, type ReadinessEvaluation, type ReadinessQuestion, type TrainingSlide } from '@/features/simulator/domain/onboarding'
 
 type Props = { organizationId: string; onQualified: () => void; openProject: () => void }
 type ClientSlide = Omit<TrainingSlide, 'correctOption'>
-type ApiResponse = { state: PublicOnboardingState; slides: ClientSlide[]; correct?: boolean; correctAnswer?: string; feedback?: string; qualified?: boolean; score?: number }
+type ClientReadinessQuestion = Omit<ReadinessQuestion, 'correctOption'>
+type ApiResponse = { state: PublicOnboardingState; slides?: ClientSlide[]; readinessQuestions?: ClientReadinessQuestion[]; correct?: boolean; correctAnswer?: string; feedback?: string; qualified?: boolean; score?: number; evaluation?: ReadinessEvaluation }
 type QuizReview = { slide: ClientSlide; selectedAnswer: string; correctAnswer: string; feedback: string }
 
 const phaseOrder: PublicOnboardingState['phase'][] = ['profile', 'policy', 'access', 'training', 'demo_task', 'qualified']
@@ -238,26 +239,49 @@ function RemediationView({ state, submit }: { state: PublicOnboardingState; subm
   </OnboardingFrame>
 }
 
-function ReadinessView({ state, submission, setSubmission, submit, feedback }: { state: PublicOnboardingState; submission: string; setSubmission: (value: string) => void; submit: (payload: Record<string, unknown>) => Promise<void>; feedback: string }) {
+function ReadinessView({ state, questions, answers, setAnswers, submit, feedback }: { state: PublicOnboardingState; questions: ClientReadinessQuestion[]; answers: Record<string, number>; setAnswers: (answers: Record<string, number>) => void; submit: (payload: Record<string, unknown>) => Promise<void>; feedback: string }) {
+  const allAnswered = questions.length > 0 && questions.every((question) => Number.isInteger(answers[question.id]))
   return <OnboardingFrame state={state}>
     <section className="card readiness-card enterprise-readiness-card">
       <div className="enterprise-section-head">
-        <div><p className="eyebrow">MANAGER READINESS REVIEW</p><h2>Submit project-access evidence</h2><p>Explain how you would safely protect the usage-alerts empty state in a real review flow.</p></div>
+        <div><p className="eyebrow">MANAGER READINESS REVIEW</p><h2>Complete the project-access assessment</h2><p>Choose the most appropriate response for each production-work scenario. Your manager review will show the result for every criterion.</p></div>
         <span className="private-badge"><UsersRound size={14} /> Reviewer: {state.managerReview.reviewer}</span>
       </div>
-      <div className="readiness-rubric">
-        <div><span>PASSING SCORE</span><b>80 / 100</b><small>Five criteria worth 20 points each.</small></div>
-        <ul>
-          <li><Check size={14} /><span><b>Permission boundary</b><small>Guard billing action with canManageBilling at the action boundary.</small></span></li>
-          <li><Check size={14} /><span><b>Legacy behavior</b><small>Keep explanatory empty state and threshold context.</small></span></li>
-          <li><Check size={14} /><span><b>Security</b><small>Protect data, secrets, and authorization.</small></span></li>
-          <li><Check size={14} /><span><b>Validation</b><small>State focused role and regression checks.</small></span></li>
-          <li><Check size={14} /><span><b>Communication</b><small>Capture PR/review/risk handoff evidence.</small></span></li>
-        </ul>
+      <div className="readiness-assessment-summary"><span><b>5 scenarios</b><small>One decision per scenario</small></span><span><b>80 / 100</b><small>Passing score</small></span><span><b>{Object.keys(answers).filter((id) => Number.isInteger(answers[id])).length} / {questions.length}</b><small>Responses selected</small></span></div>
+      <div className="readiness-mcq-list">
+        {questions.map((question, questionIndex) => <fieldset key={question.id}>
+          <legend><span>{String(questionIndex + 1).padStart(2, '0')}</span>{question.prompt}</legend>
+          <div>{question.options.map((option, optionIndex) => <label className={answers[question.id] === optionIndex ? 'selected-readiness-answer' : ''} key={option}>
+            <input type="radio" name={question.id} checked={answers[question.id] === optionIndex} onChange={() => setAnswers({ ...answers, [question.id]: optionIndex })} />
+            <span>{String.fromCharCode(65 + optionIndex)}</span><b>{option}</b>
+          </label>)}</div>
+        </fieldset>)}
       </div>
-      <textarea value={submission} onChange={(event) => setSubmission(event.target.value)} placeholder="Write the implementation, authorization, legacy-state, validation, and review plan you would put in the PR..." />
-      <div><button className="primary-button" onClick={() => void submit({ action: 'submit_readiness', submission })}><FileCheck2 size={15} /> Submit for manager review</button><span>Attempt {state.readinessAttempts + 1}</span></div>
+      <div><button className="primary-button" disabled={!allAnswered} onClick={() => void submit({ action: 'submit_readiness', answers })}><FileCheck2 size={15} /> Submit assessment for manager review</button><span>Attempt {state.readinessAttempts + 1}</span></div>
       {(feedback || state.readinessFeedback) && <p className="onboarding-feedback"><RotateCcw size={14} /> {feedback || state.readinessFeedback}</p>}
+    </section>
+  </OnboardingFrame>
+}
+
+function ReadinessResultView({ state, evaluation, retry, openProject }: { state: PublicOnboardingState; evaluation: ReadinessEvaluation; retry: () => void; openProject: () => void }) {
+  return <OnboardingFrame state={state}>
+    <section className={`card readiness-result ${evaluation.passed ? 'approved' : 'needs-work'}`}>
+      <div className="readiness-result-head">
+        <span className="readiness-result-icon">{evaluation.passed ? <Check size={22} /> : <CircleAlert size={22} />}</span>
+        <div><p className="eyebrow">MANAGER REVIEW RESULT</p><h2>{evaluation.passed ? 'Project access approved' : 'Strengthen the evidence before approval'}</h2><p>{evaluation.feedback}</p></div>
+        <div className="readiness-score"><span>SCORE</span><b>{evaluation.score}<small>/100</small></b><small>Pass threshold: 80</small></div>
+      </div>
+      <div className="readiness-result-criteria">
+        {evaluation.criteria.map((criterion) => <article className={criterion.met ? 'met' : 'missing'} key={criterion.label}>
+          {criterion.met ? <Check size={16} /> : <CircleAlert size={16} />}
+          <div><b>{criterion.label}</b><span>{criterion.met ? 'Your selected response is correct.' : criterion.evidence}</span></div>
+        </article>)}
+      </div>
+      <div className="readiness-result-actions">
+        {evaluation.passed
+          ? <button className="primary-button" onClick={openProject}>Enter main project <ArrowRight size={15} /></button>
+          : <button className="primary-button" onClick={retry}>Review selections and try again <RotateCcw size={15} /></button>}
+      </div>
     </section>
   </OnboardingFrame>
 }
@@ -297,13 +321,15 @@ export default function FunctionalOnboardingView({ organizationId, onQualified, 
   const [slides, setSlides] = useState<ClientSlide[]>([])
   const [answer, setAnswer] = useState<number | null>(null)
   const [quizReview, setQuizReview] = useState<QuizReview | null>(null)
-  const [submission, setSubmission] = useState('')
+  const [readinessResult, setReadinessResult] = useState<ReadinessEvaluation | null>(null)
+  const [readinessQuestions, setReadinessQuestions] = useState<ClientReadinessQuestion[]>([])
+  const [readinessAnswers, setReadinessAnswers] = useState<Record<string, number>>({})
   const [introduction, setIntroduction] = useState('')
   const [welcome, setWelcome] = useState<{ started: boolean; introduced: boolean; concluded: boolean } | null>(null)
   const [feedback, setFeedback] = useState('')
   const [loading, setLoading] = useState(true)
   const statePhase = state?.phase
-  const slide = useMemo(() => state?.currentSlide || slides.find((item) => !state?.completedSlideIds.includes(item.id)), [slides, state?.completedSlideIds, state?.currentSlide])
+  const slide = useMemo(() => state?.currentSlide || (Array.isArray(slides) ? slides : []).find((item) => !state?.completedSlideIds.includes(item.id)), [slides, state?.completedSlideIds, state?.currentSlide])
 
   const refresh = async () => {
     setLoading(true)
@@ -312,7 +338,8 @@ export default function FunctionalOnboardingView({ organizationId, onQualified, 
       const data = await response.json() as ApiResponse & { error?: string }
       if (!response.ok) throw new Error(data.error || data.feedback || 'Onboarding is unavailable.')
       setState(data.state)
-      setSlides(data.slides)
+      if (Array.isArray(data.slides)) setSlides(data.slides)
+      if (Array.isArray(data.readinessQuestions)) setReadinessQuestions(data.readinessQuestions)
       if (data.state.phase === 'qualified') onQualified()
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : 'Onboarding is unavailable.')
@@ -332,8 +359,10 @@ export default function FunctionalOnboardingView({ organizationId, onQualified, 
       const completedSlide = slides.find((item) => item.id === payload.slideId)
       if (completedSlide) setQuizReview({ slide: completedSlide, selectedAnswer: completedSlide.options[payload.answer], correctAnswer: data.correctAnswer || '', feedback: data.feedback || '' })
     }
+    if (payload.action === 'submit_readiness' && data.evaluation) setReadinessResult(data.evaluation)
     setState(data.state)
-    setSlides(data.slides)
+    if (Array.isArray(data.slides)) setSlides(data.slides)
+    if (Array.isArray(data.readinessQuestions)) setReadinessQuestions(data.readinessQuestions)
     setFeedback(data.feedback || '')
     if (data.state.phase === 'qualified') onQualified()
   }
@@ -376,11 +405,12 @@ export default function FunctionalOnboardingView({ organizationId, onQualified, 
   if (loading || !state) return <div className="page onboarding-page"><div className="onboarding-loading"><Clock3 size={18} /> Loading organizational onboarding...</div></div>
   if (state.phase === 'not_started') return <StartView state={state} submit={submit} />
   if (quizReview) return <QuizAnswerReview review={quizReview} continueLearning={() => { setQuizReview(null); setFeedback('') }} state={state} />
+  if (readinessResult) return <ReadinessResultView state={state} evaluation={readinessResult} retry={() => { setReadinessResult(null); void submit({ action: 'resume_readiness' }) }} openProject={openProject} />
   if (state.phase === 'profile') return <ProfileView state={state} submit={submit} />
   if (state.phase === 'policy') return <PolicyView state={state} submit={submit} />
   if (state.phase === 'access') return <AccessView state={state} submit={submit} />
   if (state.phase === 'training' && slide) return <TrainingSession state={state} slide={slide} slides={slides} answer={answer} setAnswer={setAnswer} submit={submit} feedback={feedback} />
   if (state.phase === 'remediation') return <RemediationView state={state} submit={submit} />
-  if (state.phase === 'demo_task') return <ReadinessView state={state} submission={submission} setSubmission={setSubmission} submit={submit} feedback={feedback} />
+  if (state.phase === 'demo_task') return <ReadinessView state={state} questions={readinessQuestions} answers={readinessAnswers} setAnswers={setReadinessAnswers} submit={submit} feedback={feedback} />
   return <QualifiedView state={state} openProject={openProject} updateSchedule={updateSchedule} feedback={feedback} welcome={welcome} introduction={introduction} setIntroduction={setIntroduction} submitIntroduction={submitIntroduction} />
 }
