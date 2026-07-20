@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Activity, ArrowRight, CalendarDays, CheckCircle2, Code2, GitPullRequest, Play, ShieldCheck, Sparkles, UsersRound } from 'lucide-react'
+import { Activity, ArrowRight, CalendarDays, CheckCircle2, Code2, GitPullRequest, Layers3, Play, ShieldCheck, Sparkles, UsersRound } from 'lucide-react'
 
 const proof = [
   { icon: UsersRound, title: 'An AI team that feels present', text: 'Work with a manager, PM, designer, peer engineer, and tech lead who remember context and respond to your decisions.' },
@@ -12,7 +12,7 @@ const proof = [
 function WorkPreview() {
   return (
     <aside className="hero-work-preview" aria-label="Example of a live AIWEX workday">
-      <div className="preview-topbar"><span className="preview-logo">A</span><b>SignalDesk <span>/ Sprint 02</span></b><span className="preview-live"><i /> Live workspace</span></div>
+      <div className="preview-topbar"><span className="brand-mark preview-logo"><Layers3 size={14} aria-hidden="true" /></span><b>SignalDesk <span>/ Sprint 02</span></b><span className="preview-live"><i /> Live workspace</span></div>
       <div className="preview-body">
         <div className="preview-rail"><span>WORKSPACE</span><b>Today</b><b>Issues <i>3</i></b><b>Pull requests</b><b>Team chat</b><small>YOUR TEAM</small><div className="preview-avatars"><i>MK</i><i>JL</i><i>+2</i></div></div>
         <div className="preview-content">
@@ -31,7 +31,7 @@ function WorkPreview() {
 export default function LandingPage() {
   return (
     <main className="landing-shell">
-      <header className="landing-nav"><Link href="/" className="landing-brand"><span>A</span> AIWEX</Link><nav><a href="#experience">Experience</a><a href="#workflow">How it works</a><a href="#results">Outcomes</a><Link className="landing-login" href="/sign-in">Sign in <ArrowRight size={13} /></Link></nav></header>
+      <header className="landing-nav"><Link href="/" className="landing-brand"><span className="brand-mark landing-brand-mark"><Layers3 size={18} aria-hidden="true" /></span> AIWEX</Link><nav><a href="#experience">Experience</a><a href="#workflow">How it works</a><a href="#results">Outcomes</a><Link className="landing-login" href="/sign-in">Sign in <ArrowRight size={13} /></Link></nav></header>
       <section className="landing-hero">
         <div className="landing-copy">
           <p className="landing-eyebrow"><Sparkles size={13} /> A NEW KIND OF ENGINEERING PRACTICE</p>
