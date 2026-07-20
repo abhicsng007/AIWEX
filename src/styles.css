@@ -772,6 +772,7 @@ html[data-theme='dark'] .next-action b { color:#e0dcff; }
 html[data-theme='dark'] .next-action span { color:#b2bfd3; }
 html[data-theme='dark'] .next-action button { color:#e1ddff; background:#302c65; }
 html[data-theme='dark'] .standup-popover { color:var(--aiwex-ink); background:#131d33; border-color:#494587; }
+.ceremony-card:has(.standup-popover) { z-index:6; }
 
 html[data-theme='dark'] .meeting-expand-button { color:#d9d5ff; background:#292657; border-color:#514c90; }
 html[data-theme='dark'] .meeting-expand-button:hover { color:#f0efff; background:#39346d; }

@@ -29,8 +29,11 @@ async function seedQualifiedDemo(runId: string) {
 /** Creates a disposable, in-memory, pre-qualified demo run. */
 export async function GET(request: NextRequest) {
   if (!demoModeEnabled()) return NextResponse.redirect(new URL('/sign-in?error=Demo+mode+is+disabled.', request.url))
-  const runId = demoRunFromRequest(request) || createDemoRunId()
-  await seedQualifiedDemo(runId)
+  // A clean onboarding recording still bypasses sign-in, but deliberately
+  // starts before policies, training, and readiness have been completed.
+  const startAtOnboarding = request.nextUrl.searchParams.get('onboarding') === '1'
+  const runId = startAtOnboarding ? createDemoRunId() : demoRunFromRequest(request) || createDemoRunId()
+  if (!startAtOnboarding) await seedQualifiedDemo(runId)
   const response = NextResponse.redirect(new URL('/demo/workspace', request.url))
   response.cookies.set({ name: demoCookieName, value: runId, httpOnly: true, sameSite: 'lax', secure: request.nextUrl.protocol === 'https:', path: '/', maxAge: 4 * 60 * 60 })
   return response

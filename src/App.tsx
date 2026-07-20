@@ -641,17 +641,23 @@ function App() {
   const log = (text: string) => setActivity((items) => [{ id: crypto.randomUUID(), text }, ...items].slice(0, 8))
   const recordSimulationEvent = async (type: SimulationEventType, metadata?: SimulationMetadata) => {
     if (!organizationId) { notify('Your simulation run is still loading.', 'warning'); return false }
-    const response = await fetch('/api/simulation/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId, type, metadata }) })
-    if (!response.ok) {
-      const result = await response.json() as { error?: string }
-      notify(result.error || 'The simulation could not record that action.', 'warning')
+    try {
+      const response = await fetch('/api/simulation/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId, type, metadata }) })
+      if (!response.ok) {
+        const result = await response.json() as { error?: string }
+        notify(result.error || 'The simulation could not record that action.', 'warning')
+        return false
+      }
+      const result = await response.json() as { event: SimulationEvent; taskReport?: SimulationEvent | null; projectReport?: SimulationEvent | null; cycle?: SimulationEvent | null; unlock?: SimulationEvent | null }
+      const recordedEvents = [result.event, result.taskReport, result.projectReport, result.cycle, result.unlock].filter((event): event is SimulationEvent => Boolean(event))
+      setLiveEvents((events) => [...events, ...recordedEvents.filter((event) => !events.some((item) => item.id === event.id))])
+      recordedEvents.forEach(announceSimulationEvent)
+      return result
+    } catch (error) {
+      const detail = error instanceof Error && error.message ? ` ${error.message}` : ''
+      notify(`The simulation action could not be recorded.${detail}`, 'warning')
       return false
     }
-    const result = await response.json() as { event: SimulationEvent; taskReport?: SimulationEvent | null; projectReport?: SimulationEvent | null; cycle?: SimulationEvent | null; unlock?: SimulationEvent | null }
-    const recordedEvents = [result.event, result.taskReport, result.projectReport, result.cycle, result.unlock].filter((event): event is SimulationEvent => Boolean(event))
-    setLiveEvents((events) => [...events, ...recordedEvents.filter((event) => !events.some((item) => item.id === event.id))])
-    recordedEvents.forEach(announceSimulationEvent)
-    return result
   }
   const requestAgentTurn = async (channelId: string, userMessage: string) => {
     const channel = teamSpaces.find((space) => space.id === channelId)
