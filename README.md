@@ -166,15 +166,19 @@ onboarding -> stand-up -> teammate message -> workspace revision
 - [Theia integration](docs/theia-integration.md) explains the optional isolated
   browser workbench.
 
-## How I used Codex
+## How GPT helped me
 
-I built AIWEX from scratch through multiple Codex conversations using GPT-5.6
-Terra as a development collaborator. Codex helped me move from the original
-idea to a working Next.js product: designing the workplace simulation,
-implementing onboarding and role-based collaboration, building the workspace
-and pull-request workflow, strengthening private runs and server-side
-validation, troubleshooting integration and UI issues, testing builds, and
-writing project documentation.
+> **Built with GPT-5.6 Terra (Codex)** — AIWEX was developed from scratch through
+> multiple Codex conversations with GPT as a development collaborator.
+
+GPT helped me move from the original idea to a working Next.js product:
+
+- **Design** — workplace simulation structure and learning experience
+- **Implementation** — onboarding, role-based collaboration, workspace, and
+  pull-request workflow
+- **Hardening** — private runs, server-side validation, and reliable local demos
+- **Debugging** — integration issues, UI problems, and build failures
+- **Documentation** — project docs, learner guides, and this README
 
 I used Codex as a partner for exploration, implementation, debugging, and
 review—not as an unexamined code generator. I retained ownership of the product
