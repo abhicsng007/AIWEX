@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { ArrowLeft, Check, LockKeyhole, Mail, Sparkles } from 'lucide-react'
 import { getSupabaseBrowser, isSupabaseAuthConfigured } from '@/lib/supabase-browser'
 
-type Provider = 'github' | 'google' | 'linkedin_oidc'
+type Provider = 'github' | 'google'
 
 const MAGIC_LINK_COOLDOWN_MS = 60_000
 
@@ -114,7 +114,6 @@ export default function SignInPage() {
         <div className="auth-card-heading"><span className="auth-card-mark">A</span><p className="landing-eyebrow">CREATE OR CONTINUE</p><h2>Welcome to AIWEX</h2><p>Use the account you&apos;ll want attached to your work history.</p></div>
         <button type="button" disabled={busy} onClick={() => void signIn('github')}><span className="provider-mark github-mark">GH</span> Continue with GitHub</button>
         <button type="button" disabled={busy} onClick={() => void signIn('google')}><span className="provider-mark google-mark">G</span> Continue with Google</button>
-        <button type="button" disabled={busy} onClick={() => void signIn('linkedin_oidc')}><span className="provider-mark linkedin-mark">in</span> Continue with LinkedIn</button>
         <div className="auth-divider"><span />or continue with email<span /></div>
         <form onSubmit={emailSignIn}>
           <label>Email address<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label>
