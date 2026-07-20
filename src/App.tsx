@@ -20,6 +20,7 @@ import { scenarioWorkspaceFiles, type WorkspaceFile } from '@/features/simulator
 import type { ScheduleItem } from '@/features/simulator/domain/onboarding'
 import { meetingForSchedule } from '@/features/simulator/domain/meetings'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
+import SettingsView, { type ThemeMode } from '@/features/settings/settings-view'
 import {
   Archive, ArchiveRestore, BadgeCheck,
   ArrowRight, Bell, Bot, CalendarDays, Check, ChevronDown, CircleDot, Clock3, Code2,
@@ -29,7 +30,7 @@ import {
   FileText, Pencil, Reply, Settings2, ShieldCheck, Sparkles, TerminalSquare, Trash2, UserPlus, UsersRound, X,
 } from 'lucide-react'
 
-type View = 'guide' | 'onboarding' | 'home' | 'calendar' | 'meetings' | 'issues' | 'workspace' | 'pulls' | 'feedback' | 'team-space' | 'agent-profile'
+type View = 'guide' | 'onboarding' | 'home' | 'calendar' | 'meetings' | 'issues' | 'workspace' | 'pulls' | 'feedback' | 'team-space' | 'agent-profile' | 'settings'
 type Toast = { id: string; title: string; message: string; tone: 'success' | 'warning'; view?: View; spaceId?: string }
 type ToastOptions = Pick<Toast, 'title' | 'view' | 'spaceId'>
 type SpaceType = 'project' | 'engineering' | 'release' | 'incident' | 'general'
@@ -64,25 +65,30 @@ type TeamMessage = { id: number; spaceId: string; author: string; role: string; 
 type ActivityItem = { id: string; text: string }
 type NotificationItem = { id: string; title: string; detail: string; view: View; spaceId?: string }
 type HomeOverlay = 'none' | 'time' | 'search' | 'notifications' | 'help' | 'organization'
-type ThemeMode = 'light' | 'dark' | 'system'
 type WorkspaceValidation = { sourceHash: string; output: string; durationMs: number }
 type LearnerProfile = { displayName: string; firstName: string; initials: string }
 type CollaborationConnectionState = 'connecting' | 'live' | 'reconnecting' | 'offline'
+
+const DISPLAY_NAME_KEY = 'aiwex.display-name'
+const defaultLearnerProfile: LearnerProfile = { displayName: 'Alex Morgan', firstName: 'Alex', initials: 'A' }
 let latestMessageId = 0
 
-const defaultLearnerProfile: LearnerProfile = { displayName: 'Alex Morgan', firstName: 'Alex', initials: 'A' }
+function profileFromDisplayName(displayName: string): LearnerProfile {
+  const cleaned = displayName.trim() || defaultLearnerProfile.displayName
+  const nameParts = cleaned.split(/\s+/).filter(Boolean)
+  return {
+    displayName: cleaned,
+    firstName: nameParts[0] || defaultLearnerProfile.firstName,
+    initials: nameParts.slice(0, 2).map((part) => part[0]).join('').toUpperCase() || defaultLearnerProfile.initials,
+  }
+}
 
 function learnerProfileFromUser(user: { email?: string | null; user_metadata?: Record<string, unknown> } | null): LearnerProfile {
   const metadata = user?.user_metadata || {}
   const configuredName = [metadata.full_name, metadata.name, metadata.preferred_username, metadata.user_name, metadata.username, metadata.nickname]
     .find((value): value is string => typeof value === 'string' && value.trim().length > 0)
   const displayName = (configuredName || user?.email?.split('@')[0] || defaultLearnerProfile.displayName).trim()
-  const nameParts = displayName.split(/\s+/).filter(Boolean)
-  return {
-    displayName,
-    firstName: nameParts[0] || defaultLearnerProfile.firstName,
-    initials: nameParts.slice(0, 2).map((part) => part[0]).join('').toUpperCase() || defaultLearnerProfile.initials,
-  }
+  return profileFromDisplayName(displayName)
 }
 
 function shortEventText(value: unknown, fallback: string) {
@@ -327,6 +333,8 @@ function App() {
   const [themeMode, setThemeMode] = useState<ThemeMode>('system')
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light')
   const [learnerProfile, setLearnerProfile] = useState<LearnerProfile>(defaultLearnerProfile)
+  const [accountEmail, setAccountEmail] = useState<string | null>(null)
+  const [isDemoSession, setIsDemoSession] = useState(false)
   const backendWarningShown = useRef(false)
   const advancingTimeRef = useRef(false)
   const seenSimulationEventIds = useRef(new Set<string>())
@@ -374,9 +382,26 @@ function App() {
   }, [])
 
   useEffect(() => {
+    const savedName = window.localStorage.getItem(DISPLAY_NAME_KEY)?.trim()
+    if (savedName) setLearnerProfile(profileFromDisplayName(savedName))
+  }, [])
+
+  useEffect(() => {
     const supabase = getSupabaseBrowser()
-    if (!supabase) return
-    const applyUser = (user: { email?: string | null; user_metadata?: Record<string, unknown> } | null) => setLearnerProfile(learnerProfileFromUser(user))
+    if (!supabase) {
+      setIsDemoSession(true)
+      return
+    }
+    const applyUser = (user: { email?: string | null; user_metadata?: Record<string, unknown> } | null) => {
+      setAccountEmail(user?.email || null)
+      setIsDemoSession(!user)
+      const savedName = window.localStorage.getItem(DISPLAY_NAME_KEY)?.trim()
+      if (savedName) {
+        setLearnerProfile(profileFromDisplayName(savedName))
+        return
+      }
+      setLearnerProfile(learnerProfileFromUser(user))
+    }
     void supabase.auth.getUser().then(({ data }) => applyUser(data.user))
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => applyUser(session?.user || null))
     return () => listener.subscription.unsubscribe()
@@ -963,6 +988,31 @@ function App() {
   ]
   const toggleTheme = () => setThemeMode(resolvedTheme === 'dark' ? 'light' : 'dark')
 
+  const saveDisplayName = (name: string) => {
+    const next = profileFromDisplayName(name)
+    setLearnerProfile(next)
+    window.localStorage.setItem(DISPLAY_NAME_KEY, next.displayName)
+    const supabase = getSupabaseBrowser()
+    if (supabase) {
+      void supabase.auth.updateUser({ data: { full_name: next.displayName, name: next.displayName } })
+    }
+  }
+
+  const signOut = async () => {
+    const supabase = getSupabaseBrowser()
+    if (supabase) {
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+    }
+    document.cookie = 'aiwex_demo_run=; Max-Age=0; path=/; SameSite=Lax'
+    window.location.assign(isDemoSession || organizationId?.startsWith('demo-') ? '/' : '/sign-in')
+  }
+
+  const clearLocalProgress = () => {
+    if (organizationId) window.localStorage.removeItem(`shiftline-progress:${organizationId}`)
+    window.location.reload()
+  }
+
   if (!organizationId) return <main className="auth-required"><h1>{runError ? 'Simulation access needs attention.' : 'Preparing your private work simulation…'}</h1><p>{runError || 'Loading your organization, schedule, workspace, and collaboration record.'}</p></main>
 
   return <div className="app-shell">
@@ -979,14 +1029,18 @@ function App() {
         <button className="team-row" onClick={() => openAgentPortfolio('maya')}><Avatar id="maya" tone="violet" small /><span>Maya Chen</span><i className="online" /></button>
         <button className="team-row" onClick={() => openAgentPortfolio('noah')}><Avatar id="noah" tone="mint" small /><span>Noah Patel</span><i className="online" /></button>
         <button className="team-row" onClick={() => openAgentPortfolio('adele')}><Avatar id="adele" tone="orange" small /><span>Adele Okafor</span></button>
-        <div className="your-profile"><Avatar id="you" tone="blue" initials={learnerProfile.initials} /><span><b>{learnerProfile.displayName}</b><small>Full-stack engineer</small></span><MoreHorizontal size={17} /></div>
+        <button type="button" className="your-profile" onClick={() => setView('settings')} aria-label="Open settings" title="Settings">
+          <Avatar id="you" tone="blue" initials={learnerProfile.initials} />
+          <span><b>{learnerProfile.displayName}</b><small>Settings & account</small></span>
+          <MoreHorizontal size={17} />
+        </button>
       </div>
     </aside>
 
     <main className="main-area">
       <header className="topbar">
-        <div className="crumbs"><span>SignalDesk</span><ArrowRight size={13} /><b>{view === 'home' ? 'Today' : view === 'team-space' ? `# ${selectedSpace?.name}` : view === 'agent-profile' ? selectedAgent.name : nav.find((item) => item.id === view)?.label}</b></div>
-        <div className="top-actions"><button className="theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}>{resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}<span>{resolvedTheme === 'dark' ? 'Light' : 'Dark'}</span></button><button className="icon-button" onClick={() => setHomeOverlay(homeOverlay === 'search' ? 'none' : 'search')} aria-label="Search organization"><Search size={18} /></button><button className="icon-button notification" onClick={() => setHomeOverlay(homeOverlay === 'notifications' ? 'none' : 'notifications')} aria-label="Open notifications"><Bell size={18} />{unreadNotifications > 0 && <i />}</button><button className="help-button" onClick={() => setHomeOverlay(homeOverlay === 'help' ? 'none' : 'help')} aria-label="Open help for this page">?</button></div>
+        <div className="crumbs"><span>SignalDesk</span><ArrowRight size={13} /><b>{view === 'home' ? 'Today' : view === 'team-space' ? `# ${selectedSpace?.name}` : view === 'agent-profile' ? selectedAgent.name : view === 'settings' ? 'Settings' : nav.find((item) => item.id === view)?.label}</b></div>
+        <div className="top-actions"><button className="theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}>{resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}<span>{resolvedTheme === 'dark' ? 'Light' : 'Dark'}</span></button><button className="icon-button" onClick={() => setHomeOverlay(homeOverlay === 'search' ? 'none' : 'search')} aria-label="Search organization"><Search size={18} /></button><button className="icon-button notification" onClick={() => setHomeOverlay(homeOverlay === 'notifications' ? 'none' : 'notifications')} aria-label="Open notifications"><Bell size={18} />{unreadNotifications > 0 && <i />}</button><button className="icon-button" onClick={() => setView('settings')} aria-label="Open settings" title="Settings"><Settings2 size={18} /></button><button className="help-button" onClick={() => setHomeOverlay(homeOverlay === 'help' ? 'none' : 'help')} aria-label="Open help for this page">?</button></div>
       </header>
       {homeOverlay !== 'none' && <HomeControls overlay={homeOverlay} close={() => setHomeOverlay('none')} query={searchQuery} setQuery={setSearchQuery} issues={issues} messages={messages} activity={activity} workspaceCode={workspaceCode} prOpen={prOpen} notifications={notifications} readNotificationIds={readNotificationIds} currentView={view} selectResult={(target, spaceId, notificationId) => { if (spaceId) setSelectedSpaceId(spaceId); if (notificationId) setReadNotificationIds((ids) => ids.includes(notificationId) ? ids : [...ids, notificationId]); setView(target); setHomeOverlay('none') }} markAllNotificationsRead={() => setReadNotificationIds(notifications.map((item) => item.id))} simulationMinutes={simulationMinutes} isAdvancingTime={isAdvancingTime} advanceTime={advanceSimulationTime} />}
       {view === 'guide' && <FunctionalLearnerGuideView onNavigate={(target) => setView(target)} />}
@@ -1002,6 +1056,19 @@ function App() {
         : <FunctionalWorkspaceView files={workspaceFiles} updateFile={updateWorkspaceFile} saveFile={saveWorkspaceFile} testsPassed={testsPassed && Boolean(workspaceValidation)} committed={committed} testOutput={workspaceValidation?.output} testDurationMs={workspaceValidation?.durationMs} runTests={runTests} commit={commit} openPr={openPr} openTheia={() => setWorkspaceSurface('theia')} />)}
       {view === 'pulls' && <FunctionalPullRequestsView prOpen={prOpen} reviewAddressed={reviewAddressed} reviewReplied={reviewReplied} approved={approved} merged={merged} files={workspaceFiles} addressReview={addressReview} replyToReview={replyToReview} mergePullRequest={mergePullRequest} />}
       {view === 'feedback' && <FunctionalFeedbackView organizationId={organizationId} />}
+      {view === 'settings' && (
+        <SettingsView
+          displayName={learnerProfile.displayName}
+          email={accountEmail}
+          isDemo={isDemoSession || Boolean(organizationId?.startsWith('demo-'))}
+          themeMode={themeMode}
+          resolvedTheme={resolvedTheme}
+          onDisplayNameChange={saveDisplayName}
+          onThemeModeChange={setThemeMode}
+          onSignOut={signOut}
+          onClearLocalProgress={clearLocalProgress}
+        />
+      )}
     </main>
     {toasts.length > 0 && <div className="toast-stack" aria-live="polite" aria-relevant="additions">{toasts.map((toast) => <div className={`toast ${toast.tone}`} key={toast.id} role="status" onClick={() => { if (toast.spaceId) setSelectedSpaceId(toast.spaceId); if (toast.view) setView(toast.view); dismissToast(toast.id) }} title={toast.view ? 'Open related work' : undefined}><Bell size={17} /><span><b>{toast.title}</b><small>{toast.message}</small></span><button onClick={(event) => { event.stopPropagation(); dismissToast(toast.id) }} aria-label="Dismiss notification"><X size={15} /></button></div>)}</div>}
   </div>
