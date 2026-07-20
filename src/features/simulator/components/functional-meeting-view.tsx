@@ -3,14 +3,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Check, CircleAlert, CircleHelp, Clock3, Maximize2, MessageSquare, Minimize2, Play, Send, Square, ThumbsUp, UsersRound } from 'lucide-react'
 import { agentPortfolios } from '@/features/simulator/domain/agent-profiles'
-import type { MeetingExpression, MeetingSession } from '@/features/simulator/domain/meetings'
+import { expressionForMeetingText, type MeetingExpression, type MeetingMessage, type MeetingSession } from '@/features/simulator/domain/meetings'
 
 type MeetingResponse = { meetings?: MeetingSession[]; error?: string }
+type MeetingAction = 'start' | 'message' | 'agent_reply' | 'reaction' | 'end'
 
 type Props = {
   organizationId: string
   selectedMeetingId: string | null
   onMeetingSelected: (meetingId: string) => void
+  /** When true, start the selected meeting once it is loaded (used after onboarding). */
+  autoStart?: boolean
+  onAutoStarted?: () => void
 }
 
 const reactionIcons = { thumbs_up: '👍', question: '❓', concern: '⚠️' }
@@ -26,12 +30,14 @@ function timeLabel(value: string) {
   return Number.isNaN(date.getTime()) ? 'now' : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function FunctionalMeetingView({ organizationId, selectedMeetingId, onMeetingSelected }: Props) {
+export default function FunctionalMeetingView({ organizationId, selectedMeetingId, onMeetingSelected, autoStart = false, onAutoStarted }: Props) {
   const [meetings, setMeetings] = useState<MeetingSession[]>([])
   const [draft, setDraft] = useState('')
   const [notice, setNotice] = useState('')
   const [pending, setPending] = useState(false)
+  const [awaitingAgent, setAwaitingAgent] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [autoStartAttempted, setAutoStartAttempted] = useState(false)
 
   const refresh = async () => {
     try {
@@ -55,6 +61,10 @@ export default function FunctionalMeetingView({ organizationId, selectedMeetingI
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [expanded])
 
+  useEffect(() => {
+    if (autoStart) setAutoStartAttempted(false)
+  }, [autoStart, selectedMeetingId])
+
   const meeting = meetings.find((item) => item.id === selectedMeetingId) || meetings[0]
   const live = Boolean(meeting?.startedAt && !meeting.endedAt)
   const attendeeIds = useMemo(() => meeting ? [...meeting.participantIds, 'you'] : [], [meeting])
@@ -64,10 +74,13 @@ export default function FunctionalMeetingView({ organizationId, selectedMeetingI
     return latest
   }, [meeting])
 
-  const update = async (action: 'start' | 'message' | 'reaction' | 'end', extra: Record<string, string> = {}) => {
-    if (!meeting) return
-    setPending(true)
-    setNotice('')
+  const update = async (action: MeetingAction, extra: Record<string, string> = {}, options: { managePending?: boolean } = {}) => {
+    if (!meeting) return false
+    const managePending = options.managePending !== false
+    if (managePending) {
+      setPending(true)
+      setNotice('')
+    }
     try {
       const response = await fetch('/api/simulation/meetings', {
         method: 'POST',
@@ -75,22 +88,78 @@ export default function FunctionalMeetingView({ organizationId, selectedMeetingI
         body: JSON.stringify({ organizationId, meetingId: meeting.id, action, ...extra }),
       })
       const data = await response.json() as MeetingResponse
-      if (!response.ok) { setNotice(data.error || 'The meeting could not be updated.'); return }
+      if (!response.ok) {
+        setNotice(data.error || 'The meeting could not be updated.')
+        return false
+      }
       setMeetings(data.meetings || [])
-      if (action === 'start') setNotice('Meeting started. Type a concise update, question, or risk for the room.')
+      if (action === 'start') {
+        setNotice(meeting.id === 'manager-checkin'
+          ? 'Introduction meeting started. Introduce yourself to the room when you are ready.'
+          : 'Meeting started. Type a concise update, question, or risk for the room.')
+      }
       if (action === 'end') setNotice('Meeting ended. The working context and next-step record were saved.')
+      return true
     } catch {
       setNotice('The meeting could not be updated. Please try again.')
+      return false
     } finally {
-      setPending(false)
+      if (managePending) setPending(false)
     }
   }
 
+  // After onboarding, open and start the manager check-in introduction automatically.
+  useEffect(() => {
+    if (!autoStart || autoStartAttempted || !meeting || pending) return
+    if (selectedMeetingId && meeting.id !== selectedMeetingId) return
+    if (meeting.startedAt || meeting.endedAt) {
+      onAutoStarted?.()
+      return
+    }
+    setAutoStartAttempted(true)
+    void (async () => {
+      const started = await update('start')
+      if (started) onAutoStarted?.()
+      else setAutoStartAttempted(false)
+    })()
+  }, [autoStart, autoStartAttempted, meeting?.id, meeting?.startedAt, meeting?.endedAt, selectedMeetingId, pending])
+
   const sendMessage = async () => {
     const message = draft.trim()
-    if (!message) return
+    if (!message || !meeting || pending) return
     setDraft('')
-    await update('message', { message })
+    setNotice('')
+    setPending(true)
+
+    // Instant bubble + transcript, matching team-space chat behavior.
+    const optimistic: MeetingMessage = {
+      id: `local-${crypto.randomUUID()}`,
+      meetingId: meeting.id,
+      authorId: 'you',
+      text: message,
+      createdAt: new Date().toISOString(),
+      expression: expressionForMeetingText(message),
+    }
+    setMeetings((items) => items.map((item) => item.id === meeting.id
+      ? { ...item, messages: [...item.messages, optimistic] }
+      : item))
+
+    try {
+      const saved = await update('message', { message }, { managePending: false })
+      if (!saved) {
+        setMeetings((items) => items.map((item) => item.id === meeting.id
+          ? { ...item, messages: item.messages.filter((entry) => entry.id !== optimistic.id) }
+          : item))
+        return
+      }
+
+      // Teammate reply can take longer; keep the learner bubble visible while waiting.
+      setAwaitingAgent(true)
+      await update('agent_reply', { message }, { managePending: false })
+    } finally {
+      setAwaitingAgent(false)
+      setPending(false)
+    }
   }
 
   if (!meeting) return <div className="page meeting-page"><section className="meeting-empty card"><UsersRound size={22} /><h1>No team meetings are scheduled yet.</h1><p>Complete onboarding to activate the SignalDesk working calendar.</p></section></div>
@@ -119,10 +188,13 @@ export default function FunctionalMeetingView({ organizationId, selectedMeetingI
           {attendeeIds.map((id, index) => {
             const person = participant(id)
             const latest = latestMessages.get(id)
-            const expression = latest?.expression || (id === meeting.facilitatorId ? 'thinking' : 'neutral')
+            const waitingOnFacilitator = awaitingAgent && id === meeting.facilitatorId
+            const expression = waitingOnFacilitator ? 'thinking' : (latest?.expression || (id === meeting.facilitatorId ? 'thinking' : 'neutral'))
             const reaction = meeting.reactions[id]
-            return <article className={'meeting-seat seat-' + index + (latest ? ' is-speaking' : '')} key={id}>
-              {latest && <div className="dialogue-bubble"><span>{latest.text.slice(0, 170)}{latest.text.length > 170 ? '...' : ''}</span><small>{latest.authorId === 'you' ? 'You' : person.name.split(' ')[0]}</small></div>}
+            return <article className={'meeting-seat seat-' + index + (latest || waitingOnFacilitator ? ' is-speaking' : '')} key={id}>
+              {waitingOnFacilitator
+                ? <div className="dialogue-bubble dialogue-typing"><span>Thinking through a response…</span><small>{person.name.split(' ')[0]}</small></div>
+                : latest && <div className="dialogue-bubble"><span>{latest.text.slice(0, 170)}{latest.text.length > 170 ? '...' : ''}</span><small>{latest.authorId === 'you' ? 'You' : person.name.split(' ')[0]}</small></div>}
               <div className={'scene-avatar ' + person.tone + ' expression-' + expression}><span>{person.initials}</span><i>{expressionFaces[expression]}</i></div>
               {reaction && <em className="scene-reaction">{reactionIcons[reaction as keyof typeof reactionIcons]}</em>}
               <b>{id === 'you' ? 'You' : person.name.split(' ')[0]}</b><small>{person.role}</small>

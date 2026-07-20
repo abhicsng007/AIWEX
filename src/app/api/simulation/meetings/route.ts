@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json() as { organizationId?: string; meetingId?: string; action?: 'start' | 'message' | 'reaction' | 'end'; message?: string; reaction?: string }
+  const body = await request.json() as { organizationId?: string; meetingId?: string; action?: 'start' | 'message' | 'agent_reply' | 'reaction' | 'end'; message?: string; reaction?: string }
   const identity = await simulationRunIdentity(request, body.organizationId)
   if (!identity) return NextResponse.json({ error: 'Sign in to access this simulation run.' }, { status: 401 })
   const meeting = meetingFor(body.meetingId)
@@ -34,15 +34,32 @@ export async function POST(request: NextRequest) {
   if (body.action === 'start') {
     if (!active) {
       await append(identity.runId, 'meeting_started', { meetingId: meeting.id, scheduleId: meeting.scheduleId, channelId: meeting.channelId })
-      const facilitator = meeting.facilitatorId
-      await append(identity.runId, 'meeting_agent_replied', {
-        meetingId: meeting.id, channelId: meeting.channelId, authorId: facilitator,
-        message: 'Welcome, everyone. Let us keep this focused: share the decision or risk you need help with, then we will agree a clear next step.',
-        expression: 'happy',
-      })
+      // First-day manager check-in is the introduction ceremony after onboarding.
+      if (meeting.id === 'manager-checkin') {
+        const introSequence: Array<{ authorId: string; message: string; expression: string }> = [
+          { authorId: 'marcus', message: 'Welcome to SignalDesk, Alex. This is our first working check-in — introduce yourself, then we will agree how we collaborate.', expression: 'happy' },
+          { authorId: 'maya', message: 'Hi Alex. I own product outcomes for usage alerts. Bring me context early when a change could affect what we ship.', expression: 'speaking' },
+          { authorId: 'noah', message: 'Welcome. Keep assumptions written down, cover legacy behavior with tests, and use the PR to explain why a change is safe.', expression: 'speaking' },
+          { authorId: 'devon', message: 'I surface integration risks directly. A useful handoff includes the reproduction, affected surface, and the test that creates confidence.', expression: 'speaking' },
+          { authorId: 'marcus', message: 'Your turn, Alex. Introduce yourself, say what you want to learn, and ask one initial question before we return to scheduled work.', expression: 'thinking' },
+        ]
+        for (const item of introSequence) {
+          await append(identity.runId, 'meeting_agent_replied', {
+            meetingId: meeting.id, channelId: meeting.channelId, authorId: item.authorId, message: item.message, expression: item.expression,
+          })
+        }
+      } else {
+        const facilitator = meeting.facilitatorId
+        await append(identity.runId, 'meeting_agent_replied', {
+          meetingId: meeting.id, channelId: meeting.channelId, authorId: facilitator,
+          message: 'Welcome, everyone. Let us keep this focused: share the decision or risk you need help with, then we will agree a clear next step.',
+          expression: 'happy',
+        })
+      }
     }
   }
 
+  // Persist the learner message immediately so dialogue bubbles/transcript update without waiting on the agent.
   if (body.action === 'message') {
     const message = body.message?.trim().slice(0, 900)
     if (!message) return NextResponse.json({ error: 'Write a message before sending it to the room.' }, { status: 400 })
@@ -50,6 +67,13 @@ export async function POST(request: NextRequest) {
     await append(identity.runId, 'meeting_message_posted', {
       meetingId: meeting.id, channelId: meeting.channelId, authorId: 'you', message, expression: expressionForMeetingText(message),
     })
+  }
+
+  // Agent reply is a separate step so the room can show the learner bubble first (same pattern as team spaces).
+  if (body.action === 'agent_reply') {
+    const message = body.message?.trim().slice(0, 900)
+    if (!message) return NextResponse.json({ error: 'A meeting message is required before requesting a teammate reply.' }, { status: 400 })
+    if (!active) return NextResponse.json({ error: 'Start the meeting before requesting a teammate reply.' }, { status: 409 })
     try {
       const turn = await createAgentTurn({
         organizationId: identity.runId, channelId: meeting.channelId, userMessage: message,

@@ -63,8 +63,20 @@ type TeamSpace = {
 type TeamAttachment = { name: string; size: number; type: string; path?: string; url?: string; file?: File }
 type TeamMessage = { id: number; spaceId: string; author: string; role: string; initials: string; tone: string; time: string; text: string; link: string; threadId?: number; clientMessageId?: string; eventId?: string; attachment?: TeamAttachment; edited?: boolean; tags?: MessageTag[]; pinned?: boolean; acknowledgedBy?: string[]; resolved?: boolean; followUpId?: string }
 type ActivityItem = { id: string; text: string }
-type NotificationItem = { id: string; title: string; detail: string; view: View; spaceId?: string }
+type NotificationItem = { id: string; title: string; detail: string; view: View; spaceId?: string; tone?: 'success' | 'warning' | 'action'; kind?: 'schedule' | 'action' | 'event' | 'message' }
 type HomeOverlay = 'none' | 'time' | 'search' | 'notifications' | 'help' | 'organization'
+
+/** High-volume events that should not clutter the notification inbox. */
+const NOTIFICATION_EXCLUDED_EVENT_TYPES = new Set<SimulationEventType>([
+  'workspace_revision_saved',
+  'simulation_time_advanced',
+  'chat_message',
+  'chat_message_edited',
+  'chat_message_deleted',
+  'message_pinned',
+  'space_member_added',
+  'space_member_removed',
+])
 type WorkspaceValidation = { sourceHash: string; output: string; durationMs: number }
 type LearnerProfile = { displayName: string; firstName: string; initials: string }
 type CollaborationConnectionState = 'connecting' | 'live' | 'reconnecting' | 'offline'
@@ -139,6 +151,34 @@ function simulationEventToast(event: SimulationEvent): Omit<Toast, 'id'> {
     chat_message_deleted: { title: 'Message deleted', message: 'The team update was removed.', tone: 'success', view: 'team-space' },
   }
   return details[event.type] || { title: 'Simulation update', message: event.type.replace(/_/g, ' ') + ' was recorded.', tone: 'success', view: 'feedback' }
+}
+
+/** Map a recorded simulation event into the same content shown in toast notifications. */
+function simulationEventNotification(event: SimulationEvent): NotificationItem | null {
+  if (NOTIFICATION_EXCLUDED_EVENT_TYPES.has(event.type)) return null
+  const toast = simulationEventToast(event)
+  return {
+    id: `event-${event.id}`,
+    title: toast.title,
+    detail: toast.message,
+    view: toast.view || 'feedback',
+    spaceId: toast.spaceId,
+    tone: toast.tone,
+    kind: event.type === 'agent_reply' ? 'message' : 'event',
+  }
+}
+
+function notificationIcon(notification: NotificationItem) {
+  if (notification.tone === 'warning' || notification.kind === 'schedule') return Flag
+  if (notification.view === 'calendar' || notification.view === 'meetings') return CalendarDays
+  if (notification.view === 'team-space') return MessageSquare
+  if (notification.view === 'pulls') return GitBranch
+  if (notification.view === 'workspace') return Code2
+  if (notification.view === 'issues') return CircleDot
+  if (notification.view === 'feedback') return BadgeCheck
+  if (notification.view === 'onboarding' || notification.view === 'guide') return GraduationCap
+  if (notification.view === 'home') return ListChecks
+  return Bell
 }
 
 function createMessageId() {
@@ -330,6 +370,7 @@ function App() {
   const [calendarSchedule, setCalendarSchedule] = useState<ScheduleItem[]>([])
   const [calendarSimulationNow, setCalendarSimulationNow] = useState(() => new Date().toISOString())
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null)
+  const [autoStartIntroMeeting, setAutoStartIntroMeeting] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>('system')
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light')
   const [learnerProfile, setLearnerProfile] = useState<LearnerProfile>(defaultLearnerProfile)
@@ -561,6 +602,12 @@ function App() {
     source.addEventListener('snapshot', (message) => {
       const events = JSON.parse((message as MessageEvent<string>).data) as SimulationEvent[]
       events.forEach((event) => ingest(event, false))
+      // Historical ledger events belong in the inbox, but should not light the unread badge.
+      setReadNotificationIds((ids) => {
+        const next = new Set(ids)
+        events.forEach((event) => next.add(`event-${event.id}`))
+        return Array.from(next)
+      })
       markSynced()
     })
     source.addEventListener('simulation-event', (message) => {
@@ -617,32 +664,72 @@ function App() {
   const scheduleNotifications = useMemo<NotificationItem[]>(() => {
     const now = Date.parse(calendarSimulationNow)
     const currentTime = Number.isFinite(now) ? now : Date.now()
-    return calendarSchedule
-      .filter((item) => !item.completed)
-      .map((item) => {
-        if (item.missed) return { id: 'calendar-missed-' + item.id, title: 'Missed: ' + item.title, detail: 'Open Calendar to record and communicate the recovery plan.', view: 'calendar' as View, priority: 0 }
-        const startsAt = Date.parse(item.startsAt)
-        const endsAt = Date.parse(item.endsAt)
-        const minutesUntil = Math.ceil((startsAt - currentTime) / 60_000)
-        if (currentTime >= startsAt && currentTime <= endsAt) return { id: 'calendar-now-' + item.id, title: 'Now: ' + item.title, detail: item.kind === 'ceremony' ? 'The conference room is ready for this team meeting.' : 'This scheduled work block is in progress.', view: item.kind === 'ceremony' ? 'meetings' as View : 'calendar' as View, priority: 1 }
-        if (minutesUntil > 0 && minutesUntil <= 30) return { id: 'calendar-soon-' + item.id, title: item.title + ' starts soon', detail: 'Starts in ' + minutesUntil + ' min. Open Calendar for context and actions.', view: 'calendar' as View, priority: 2 }
-        return null
-      })
-      .filter((item): item is NotificationItem & { priority: number } => Boolean(item))
+    const ranked: Array<NotificationItem & { priority: number }> = []
+    for (const item of calendarSchedule) {
+      if (item.completed) continue
+      if (item.missed) {
+        ranked.push({ id: 'calendar-missed-' + item.id, title: 'Missed: ' + item.title, detail: 'Open Calendar to record and communicate the recovery plan.', view: 'calendar', tone: 'warning', kind: 'schedule', priority: 0 })
+        continue
+      }
+      const startsAt = Date.parse(item.startsAt)
+      const endsAt = Date.parse(item.endsAt)
+      const minutesUntil = Math.ceil((startsAt - currentTime) / 60_000)
+      if (currentTime >= startsAt && currentTime <= endsAt) {
+        ranked.push({ id: 'calendar-now-' + item.id, title: 'Now: ' + item.title, detail: item.kind === 'ceremony' ? 'The conference room is ready for this team meeting.' : 'This scheduled work block is in progress.', view: item.kind === 'ceremony' ? 'meetings' : 'calendar', tone: 'action', kind: 'schedule', priority: 1 })
+        continue
+      }
+      if (minutesUntil > 0 && minutesUntil <= 30) {
+        ranked.push({ id: 'calendar-soon-' + item.id, title: item.title + ' starts soon', detail: 'Starts in ' + minutesUntil + ' min. Open Calendar for context and actions.', view: 'calendar', tone: 'action', kind: 'schedule', priority: 2 })
+      }
+    }
+    return ranked
       .sort((left, right) => left.priority - right.priority)
       .map(({ priority: _priority, ...item }) => item)
   }, [calendarSchedule, calendarSimulationNow])
-  const notifications = useMemo<NotificationItem[]>(() => [
-    ...scheduleNotifications,
-    !standupDone ? { id: 'standup-due', title: 'Async stand-up is due', detail: 'Share your plan before implementation.', view: 'home' } : null,
-    !testsPassed && standupDone ? { id: 'branch-checks', title: 'Branch checks are your next gate', detail: 'Implement the guard and run CI before committing.', view: 'workspace' } : null,
-    testsPassed && !committed ? { id: 'commit-ready', title: 'Your branch is ready to commit', detail: 'Capture the verified implementation on your feature branch.', view: 'workspace' } : null,
-    committed && !prOpen ? { id: 'review-needed', title: 'PROJ-184 needs a pull request', detail: 'Request review so the release train can move.', view: 'pulls' } : null,
-    prOpen && !reviewAddressed ? { id: 'review-requested', title: 'Noah requested a change on PR #482', detail: 'Address the role guard before merge.', view: 'pulls' } : null,
-    prOpen && reviewAddressed && !approved ? { id: 'review-response', title: 'Explain the review update', detail: 'Your reviewer needs a clear response before approval.', view: 'pulls' } : null,
-    ...teamSpaces.filter((space) => space.unread > 0).map((space) => ({ id: `unread-${space.id}`, title: `New activity in #${space.name}`, detail: `${space.unread} unread team update${space.unread === 1 ? '' : 's'}.`, view: 'team-space' as View, spaceId: space.id })),
-    ...activity.slice(0, 4).map((item) => ({ id: `activity-${item.id}`, title: 'Your simulation activity', detail: item.text, view: 'feedback' as View })),
-  ].filter(Boolean) as NotificationItem[], [scheduleNotifications, standupDone, testsPassed, committed, prOpen, reviewAddressed, approved, teamSpaces, activity])
+  // Prefer real simulation events (same copy as toast toasts) over the old generic activity log.
+  const eventNotifications = useMemo<NotificationItem[]>(() => {
+    const items: NotificationItem[] = []
+    for (let index = liveEvents.length - 1; index >= 0 && items.length < 24; index -= 1) {
+      const notification = simulationEventNotification(liveEvents[index])
+      if (notification) items.push(notification)
+    }
+    return items
+  }, [liveEvents])
+  const isViewLocked = (target: View) => !onboardingQualified && !['guide', 'onboarding', 'feedback', 'settings'].includes(target)
+  const notifications = useMemo<NotificationItem[]>(() => {
+    // Before onboarding, never surface project/team actions that open locked surfaces.
+    if (!onboardingQualified) {
+      return [
+        { id: 'onboarding-required', title: 'Complete onboarding first', detail: 'Finish your profile, policies, and readiness task to unlock the main project.', view: 'onboarding' as View, tone: 'action' as const, kind: 'action' as const },
+        { id: 'learner-guide', title: 'Read the learner guide', detail: 'Learn how the workplace simulation works before you join the team.', view: 'guide' as View, tone: 'action' as const, kind: 'action' as const },
+      ]
+    }
+    const actionItems: NotificationItem[] = [
+      !standupDone ? { id: 'standup-due', title: 'Async stand-up is due', detail: 'Share your plan before implementation.', view: 'home' as View, tone: 'action' as const, kind: 'action' as const } : null,
+      !testsPassed && standupDone ? { id: 'branch-checks', title: 'Branch checks are your next gate', detail: 'Implement the guard and run CI before committing.', view: 'workspace' as View, tone: 'action' as const, kind: 'action' as const } : null,
+      testsPassed && !committed ? { id: 'commit-ready', title: 'Your branch is ready to commit', detail: 'Capture the verified implementation on your feature branch.', view: 'workspace' as View, tone: 'action' as const, kind: 'action' as const } : null,
+      committed && !prOpen ? { id: 'review-needed', title: 'PROJ-184 needs a pull request', detail: 'Request review so the release train can move.', view: 'pulls' as View, tone: 'action' as const, kind: 'action' as const } : null,
+      prOpen && !reviewAddressed ? { id: 'review-requested', title: 'Noah requested a change on PR #482', detail: 'Address the role guard before merge.', view: 'pulls' as View, tone: 'action' as const, kind: 'action' as const } : null,
+      prOpen && reviewAddressed && !approved ? { id: 'review-response', title: 'Explain the review update', detail: 'Your reviewer needs a clear response before approval.', view: 'pulls' as View, tone: 'action' as const, kind: 'action' as const } : null,
+    ].filter(Boolean) as NotificationItem[]
+    const unreadSpaces = teamSpaces
+      .filter((space) => space.unread > 0)
+      .map((space) => ({
+        id: `unread-${space.id}`,
+        title: `New activity in #${space.name}`,
+        detail: `${space.unread} unread team update${space.unread === 1 ? '' : 's'}.`,
+        view: 'team-space' as View,
+        spaceId: space.id,
+        tone: 'action' as const,
+        kind: 'message' as const,
+      }))
+    // Dedupe action/unread rows that already appear as live event notifications.
+    const eventIds = new Set(eventNotifications.map((item) => item.id))
+    const seenTitles = new Set(eventNotifications.map((item) => item.title.toLowerCase()))
+    const uniqueActions = actionItems.filter((item) => !seenTitles.has(item.title.toLowerCase()))
+    const uniqueSpaces = unreadSpaces.filter((item) => !eventIds.has(item.id) && !eventNotifications.some((event) => event.spaceId === item.spaceId && event.kind === 'message'))
+    return [...scheduleNotifications, ...uniqueActions, ...uniqueSpaces, ...eventNotifications]
+  }, [onboardingQualified, scheduleNotifications, standupDone, testsPassed, committed, prOpen, reviewAddressed, approved, teamSpaces, eventNotifications])
   const unreadNotifications = notifications.filter((item) => !readNotificationIds.includes(item.id)).length
   const liveMeetingCount = useMemo(() => {
     const now = Date.parse(calendarSimulationNow)
@@ -1042,12 +1129,29 @@ function App() {
         <div className="crumbs"><span>SignalDesk</span><ArrowRight size={13} /><b>{view === 'home' ? 'Today' : view === 'team-space' ? `# ${selectedSpace?.name}` : view === 'agent-profile' ? selectedAgent.name : view === 'settings' ? 'Settings' : nav.find((item) => item.id === view)?.label}</b></div>
         <div className="top-actions"><button className="theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}>{resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}<span>{resolvedTheme === 'dark' ? 'Light' : 'Dark'}</span></button><button className="icon-button" onClick={() => setHomeOverlay(homeOverlay === 'search' ? 'none' : 'search')} aria-label="Search organization"><Search size={18} /></button><button className="icon-button notification" onClick={() => setHomeOverlay(homeOverlay === 'notifications' ? 'none' : 'notifications')} aria-label="Open notifications"><Bell size={18} />{unreadNotifications > 0 && <i />}</button><button className="icon-button" onClick={() => setView('settings')} aria-label="Open settings" title="Settings"><Settings2 size={18} /></button><button className="help-button" onClick={() => setHomeOverlay(homeOverlay === 'help' ? 'none' : 'help')} aria-label="Open help for this page">?</button></div>
       </header>
-      {homeOverlay !== 'none' && <HomeControls overlay={homeOverlay} close={() => setHomeOverlay('none')} query={searchQuery} setQuery={setSearchQuery} issues={issues} messages={messages} activity={activity} workspaceCode={workspaceCode} prOpen={prOpen} notifications={notifications} readNotificationIds={readNotificationIds} currentView={view} selectResult={(target, spaceId, notificationId) => { if (spaceId) setSelectedSpaceId(spaceId); if (notificationId) setReadNotificationIds((ids) => ids.includes(notificationId) ? ids : [...ids, notificationId]); setView(target); setHomeOverlay('none') }} markAllNotificationsRead={() => setReadNotificationIds(notifications.map((item) => item.id))} simulationMinutes={simulationMinutes} isAdvancingTime={isAdvancingTime} advanceTime={advanceSimulationTime} />}
+      {homeOverlay !== 'none' && <HomeControls overlay={homeOverlay} close={() => setHomeOverlay('none')} query={searchQuery} setQuery={setSearchQuery} issues={issues} messages={messages} activity={activity} workspaceCode={workspaceCode} prOpen={prOpen} notifications={notifications} readNotificationIds={readNotificationIds} currentView={view} selectResult={(target, spaceId, notificationId) => {
+        if (notificationId) setReadNotificationIds((ids) => ids.includes(notificationId) ? ids : [...ids, notificationId])
+        if (isViewLocked(target)) {
+          notify('Complete onboarding and pass the readiness task to unlock the main project.', 'warning')
+          setView('onboarding')
+          setHomeOverlay('none')
+          return
+        }
+        if (spaceId) setSelectedSpaceId(spaceId)
+        setView(target)
+        setHomeOverlay('none')
+      }} markAllNotificationsRead={() => setReadNotificationIds(notifications.map((item) => item.id))} simulationMinutes={simulationMinutes} isAdvancingTime={isAdvancingTime} advanceTime={advanceSimulationTime} />}
       {view === 'guide' && <FunctionalLearnerGuideView onNavigate={(target) => setView(target)} />}
-      {view === 'onboarding' && <FunctionalOnboardingView organizationId={organizationId} onQualified={() => setOnboardingQualified(true)} openProject={() => setView('home')} />}
+      {view === 'onboarding' && <FunctionalOnboardingView organizationId={organizationId} onQualified={() => setOnboardingQualified(true)} openProject={() => {
+        setOnboardingQualified(true)
+        setSelectedMeetingId('manager-checkin')
+        setAutoStartIntroMeeting(true)
+        setView('meetings')
+        notify('Join the manager check-in to meet the team and introduce yourself.', 'success', { title: 'Introduction meeting', view: 'meetings' })
+      }} />}
       {view === 'home' && <HomeView learnerFirstName={learnerProfile.firstName} standupDone={standupDone} showCeremony={showCeremony} setShowCeremony={setShowCeremony} completeStandup={completeStandup} messages={activeMessages} allMessages={messages} liveEvents={liveEvents} activeChallenges={activeChallenges} scenarioLevel={scenarioLevel} scenarioProgression={scenarioProgression} selectScenarioLevel={selectScenarioLevel} selectedTeamSpace={selectedSpace} draft={draft} setDraft={setDraft} sendMessage={sendMessage} activity={activity} issues={issues} setView={setView} openAgentPortfolio={openAgentPortfolio} testsPassed={testsPassed} committed={committed} prOpen={prOpen} reviewAddressed={reviewAddressed} progress={progress} simulationMinutes={simulationMinutes} isAdvancingTime={isAdvancingTime} advanceTime={() => setHomeOverlay(homeOverlay === 'time' ? 'none' : 'time')} quickAdvance={(minutes) => void advanceSimulationTime(minutes)} collaborationConnection={collaborationConnection} collaborationLastSyncedAt={collaborationLastSyncedAt} currentIssue={issues.find((issue) => issue.id === (scenarioProgression.currentLevel === scenarioLevel ? scenarioProgression.activeTaskId : taskIdsForScenarioLevel[scenarioLevel][0])) || issues.find((issue) => issue.assignee === 'alex' && issue.status !== 'done')} />}
       {view === 'calendar' && <FunctionalCalendarView organizationId={organizationId} schedule={calendarSchedule} simulationNow={calendarSimulationNow} onScheduleUpdated={(schedule, now) => { setCalendarSchedule(schedule); setCalendarSimulationNow(now) }} onOpenMeeting={(scheduleId) => { const meeting = meetingForSchedule(scheduleId); if (!meeting) { notify('This calendar item does not use a conference room.', 'warning'); return }; setSelectedMeetingId(meeting.id); setView('meetings') }} />}
-      {view === 'meetings' && <FunctionalMeetingView organizationId={organizationId} selectedMeetingId={selectedMeetingId} onMeetingSelected={setSelectedMeetingId} />}
+      {view === 'meetings' && <FunctionalMeetingView organizationId={organizationId} selectedMeetingId={selectedMeetingId} onMeetingSelected={setSelectedMeetingId} autoStart={autoStartIntroMeeting} onAutoStarted={() => setAutoStartIntroMeeting(false)} />}
       {view === 'team-space' && <TeamSpaceView space={selectedSpace} messages={activeMessages} allMessages={messages} followUps={followUps} draft={draft} setDraft={setDraft} sendMessage={sendMessage} sendThreadReply={(message, threadId) => sendMessage(undefined, message, threadId)} updateSpace={updateTeamSpace} updateMessage={updateMessage} deleteMessage={deleteMessage} togglePinMessage={togglePinMessage} markMessage={markMessage} createFollowUp={createFollowUp} completeFollowUp={completeFollowUp} resolveThread={resolveThread} archiveSpace={archiveTeamSpace} unarchiveSpace={unarchiveTeamSpace} learnerName={learnerProfile.displayName} openAgentPortfolio={openAgentPortfolio} />}
       {view === 'agent-profile' && <AgentPortfolioView agent={selectedAgent} openTeamSpace={() => selectTeamSpace(selectedAgent.id === 'devon' ? 'engineering' : selectedAgent.id === 'maya' ? 'releases' : 'product-usage')} />}
       {view === 'issues' && <FunctionalIssuesView issues={issues} createIssue={createIssue} updateIssue={updateIssue} openWorkspace={() => setView('workspace')} />}
@@ -1070,7 +1174,7 @@ function App() {
         />
       )}
     </main>
-    {toasts.length > 0 && <div className="toast-stack" aria-live="polite" aria-relevant="additions">{toasts.map((toast) => <div className={`toast ${toast.tone}`} key={toast.id} role="status" onClick={() => { if (toast.spaceId) setSelectedSpaceId(toast.spaceId); if (toast.view) setView(toast.view); dismissToast(toast.id) }} title={toast.view ? 'Open related work' : undefined}><Bell size={17} /><span><b>{toast.title}</b><small>{toast.message}</small></span><button onClick={(event) => { event.stopPropagation(); dismissToast(toast.id) }} aria-label="Dismiss notification"><X size={15} /></button></div>)}</div>}
+    {toasts.length > 0 && <div className="toast-stack" aria-live="polite" aria-relevant="additions">{toasts.map((toast) => { const Icon = notificationIcon({ id: toast.id, title: toast.title, detail: toast.message, view: toast.view || 'feedback', spaceId: toast.spaceId, tone: toast.tone, kind: toast.view === 'team-space' ? 'message' : 'event' }); return <div className={`toast ${toast.tone}`} key={toast.id} role="status" onClick={() => { if (toast.spaceId) setSelectedSpaceId(toast.spaceId); if (toast.view) setView(toast.view); dismissToast(toast.id) }} title={toast.view ? 'Open related work' : undefined}><Icon size={17} /><span><b>{toast.title}</b><small>{toast.message}</small></span><button onClick={(event) => { event.stopPropagation(); dismissToast(toast.id) }} aria-label="Dismiss notification"><X size={15} /></button></div> })}</div>}
   </div>
 }
 
@@ -1105,7 +1209,7 @@ function HomeControls({ overlay, close, query, setQuery, issues, messages, activ
       {overlay === 'time' && <><span className="eyebrow">SIMULATION CLOCK</span><h2>{formatSimulationTime(simulationMinutes)} · Advance the workday</h2><p>Time moves only when you choose. The next scenario trigger is shown before you advance.</p><div className="time-options">{nextCheckpoint && <button className="next-time-option" type="button" disabled={isAdvancingTime} onClick={() => advanceTime(nextAdvance)}><span><FastForward size={15} /> {isAdvancingTime ? 'Advancing…' : 'Next event'}</span><small>{nextCheckpoint.title} in {formatSimulationAdvance(nextAdvance)}</small></button>}<button type="button" disabled={isAdvancingTime} onClick={() => advanceTime(15)}>+15 min <small>Quick focus block</small></button><button type="button" disabled={isAdvancingTime} onClick={() => advanceTime(60)}>+1 hour <small>Team check-ins may arrive</small></button><button type="button" disabled={isAdvancingTime} onClick={() => advanceTime(180)}>+3 hours <small>Move toward stakeholder review</small></button></div></>}
       {overlay === 'search' && <><span className="eyebrow">ORGANIZATION SEARCH</span><h2>Find work and context</h2><input autoFocus className="global-search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search issues, people, or messages" />{!normalizedQuery ? <p>Search across the current scenario’s issue board and team conversations.</p> : <div className="search-results">{issueResults.map((issue) => <button key={issue.id} onClick={() => selectResult('issues')}><CircleDot size={15} /><span><b>{issue.id} · {issue.title}</b><small>{issue.status.replace('_', ' ')} · {issue.priority} priority</small></span></button>)}{messageResults.map((message, index) => <button key={`${message.id}-${message.spaceId}-${index}`} onClick={() => selectResult('team-space', message.spaceId)}><MessageSquare size={15} /><span><b>{message.author} in #{message.spaceId}</b><small>{message.text.slice(0, 90)}</small></span></button>)}{!issueResults.length && !messageResults.length && <p>No scenario records match “{query}”.</p>}</div>}</>}
       {overlay === 'search' && normalizedQuery && (pullResults.length > 0 || workspaceResults.length > 0 || activityResults.length > 0) && <div className="search-results extended-search-results">{pullResults.map((result) => <button key={result.id} onClick={() => selectResult('pulls')}><GitBranch size={15} /><span><b>{result.title}</b><small>{result.detail}</small></span></button>)}{workspaceResults.map((result) => <button key={result.id} onClick={() => selectResult('workspace')}><Code2 size={15} /><span><b>{result.title}</b><small>{result.detail}</small></span></button>)}{activityResults.map((item) => <button key={item.id} onClick={() => selectResult('feedback')}><Check size={15} /><span><b>Simulation activity</b><small>{item.text}</small></span></button>)}</div>}
-      {overlay === 'notifications' && <><div className="notification-title"><div><span className="eyebrow">ACTION REQUIRED</span><h2>Notifications</h2></div><button className="ghost-button" onClick={markAllNotificationsRead}>Mark all read</button></div><div className="notification-list">{notifications.length ? notifications.map((notification) => <button key={notification.id} className={readNotificationIds.includes(notification.id) ? 'notification-read' : ''} onClick={() => selectResult(notification.view, notification.spaceId, notification.id)}><Bell size={16} /><span><b>{notification.title}</b><small>{notification.detail}</small></span><ArrowRight size={14} /></button>) : <p>You are caught up. New scenario events will appear here.</p>}</div></>}
+      {overlay === 'notifications' && <><div className="notification-title"><div><span className="eyebrow">ACTION REQUIRED</span><h2>Notifications</h2></div><button className="ghost-button" onClick={markAllNotificationsRead}>Mark all read</button></div><div className="notification-list">{notifications.length ? notifications.map((notification) => { const Icon = notificationIcon(notification); return <button key={notification.id} className={`${readNotificationIds.includes(notification.id) ? 'notification-read' : ''} ${notification.tone === 'warning' ? 'notification-warning' : notification.kind === 'action' || notification.kind === 'schedule' ? 'notification-action' : ''}`} onClick={() => selectResult(notification.view, notification.spaceId, notification.id)}><Icon size={16} /><span><b>{notification.title}</b><small>{notification.detail}</small></span><ArrowRight size={14} /></button> }) : <p>You are caught up. New scenario events will appear here.</p>}</div></>}
       {overlay === 'help' && <><span className="eyebrow">CONTEXTUAL HELP</span><h2>{help.title}</h2><ol className="guide-list">{help.steps.map((step) => <li key={step}>{step}</li>)}</ol><button className="primary-button" onClick={() => selectResult(help.target)}>{help.label} <ArrowRight size={15} /></button></>}
       {overlay === 'organization' && <><span className="eyebrow">CURRENT ORGANIZATION</span><h2>SignalDesk</h2><p>Pro workspace · Curated B2B SaaS scenario · Sprint 2 of 3</p><div className="org-overview"><span><UsersRound size={16} /> 6 AI teammates</span><span><CircleDot size={16} /> {issues.filter((issue) => issue.status !== 'done').length} active issues</span><span><GitBranch size={16} /> {prOpen ? '1 learner PR in progress' : 'No learner PR yet'}</span></div><button className="primary-button" onClick={() => selectResult('home')}>Open today’s work <ArrowRight size={15} /></button></>}
     </section>
