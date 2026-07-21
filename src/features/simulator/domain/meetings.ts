@@ -67,8 +67,58 @@ export const meetingDefinitions: MeetingDefinition[] = [
   },
 ]
 
+export type MeetingScriptLine = {
+  authorId: string
+  message: string
+  expression: MeetingExpression
+}
+
 export function meetingForSchedule(scheduleId: string) {
   return meetingDefinitions.find((meeting) => meeting.scheduleId === scheduleId)
+}
+
+/** Convener-led opening turns. Lines are revealed one at a time so the room feels live. */
+export function meetingOpeningScript(meeting: Pick<MeetingDefinition, 'id' | 'facilitatorId' | 'title'>): MeetingScriptLine[] {
+  if (meeting.id === 'manager-checkin') {
+    return [
+      { authorId: 'marcus', message: 'Welcome to SignalDesk, Alex. This is our first working check-in — I will convene the room, then each teammate will take a short turn.', expression: 'happy' },
+      { authorId: 'maya', message: 'Hi Alex. I own product outcomes for usage alerts. Bring me context early when a change could affect what we ship.', expression: 'speaking' },
+      { authorId: 'noah', message: 'Welcome. Keep assumptions written down, cover legacy behavior with tests, and use the PR to explain why a change is safe.', expression: 'speaking' },
+      { authorId: 'devon', message: 'I surface integration risks directly. A useful handoff includes the reproduction, affected surface, and the test that creates confidence.', expression: 'speaking' },
+      { authorId: 'marcus', message: 'Your turn, Alex. Introduce yourself, say what you want to learn, and ask one initial question before we return to scheduled work.', expression: 'thinking' },
+    ]
+  }
+  return [{
+    authorId: meeting.facilitatorId,
+    message: `Welcome, everyone. I am convening ${meeting.title}. Keep this focused: share the decision or risk you need help with, then we will agree a clear next step.`,
+    expression: 'happy',
+  }]
+}
+
+/** How many consecutive opening-script lines have already been posted from the start of the transcript. */
+export function openingScriptProgress(meeting: Pick<MeetingDefinition, 'id' | 'facilitatorId' | 'title'>, messages: MeetingMessage[]): number {
+  const script = meetingOpeningScript(meeting)
+  let matched = 0
+  while (matched < script.length && matched < messages.length) {
+    const line = script[matched]
+    const posted = messages[matched]
+    if (posted.authorId !== line.authorId || posted.text !== line.message) break
+    matched += 1
+  }
+  return matched
+}
+
+export function nextOpeningScriptLine(meeting: Pick<MeetingDefinition, 'id' | 'facilitatorId' | 'title'>, messages: MeetingMessage[]): MeetingScriptLine | null {
+  const script = meetingOpeningScript(meeting)
+  const matched = openingScriptProgress(meeting, messages)
+  // Learner (or other) speech interrupted the scripted opening — floor is open.
+  if (messages.length > matched) return null
+  if (matched >= script.length) return null
+  return script[matched]
+}
+
+export function isOpeningComplete(meeting: Pick<MeetingDefinition, 'id' | 'facilitatorId' | 'title'>, messages: MeetingMessage[]): boolean {
+  return nextOpeningScriptLine(meeting, messages) === null
 }
 
 export function expressionForMeetingText(text: string): MeetingExpression {

@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { simulationRunIdentity } from '@/features/auth/server-auth'
 import { deriveOnboardingState } from '@/features/simulator/domain/onboarding'
-import { deriveMeetingSessions, expressionForMeetingText, meetingDefinitions } from '@/features/simulator/domain/meetings'
+import {
+  deriveMeetingSessions,
+  expressionForMeetingText,
+  isOpeningComplete,
+  meetingDefinitions,
+  meetingOpeningScript,
+  nextOpeningScriptLine,
+} from '@/features/simulator/domain/meetings'
 import type { SimulationEvent } from '@/features/simulator/domain/types'
 import { createAgentTurn } from '@/features/simulator/server/agents/orchestrator'
 import { inMemoryEventStore } from '@/features/simulator/server/event-store'
@@ -12,6 +19,24 @@ const append = (organizationId: string, type: SimulationEvent['type'], metadata:
 
 const meetingFor = (meetingId?: string) => meetingDefinitions.find((meeting) => meeting.id === meetingId)
 
+type MeetingAction = 'start' | 'message' | 'agent_reply' | 'intro_next' | 'reaction' | 'end'
+
+function payload(runId: string, meetingId: string) {
+  return inMemoryEventStore.list(runId).then((events) => {
+    const meetings = deriveMeetingSessions(events)
+    const session = meetings.find((item) => item.id === meetingId)
+    const meeting = meetingFor(meetingId)
+    const introComplete = meeting && session ? isOpeningComplete(meeting, session.messages) : true
+    const nextLine = meeting && session ? nextOpeningScriptLine(meeting, session.messages) : null
+    return {
+      meetings,
+      introComplete,
+      nextSpeakerId: nextLine?.authorId || null,
+      floorSpeakerId: session?.messages.at(-1)?.authorId || null,
+    }
+  })
+}
+
 export async function GET(request: NextRequest) {
   const identity = await simulationRunIdentity(request, request.nextUrl.searchParams.get('organizationId'))
   if (!identity) return NextResponse.json({ error: 'Sign in to access this simulation run.' }, { status: 401 })
@@ -21,7 +46,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json() as { organizationId?: string; meetingId?: string; action?: 'start' | 'message' | 'agent_reply' | 'reaction' | 'end'; message?: string; reaction?: string }
+  const body = await request.json() as { organizationId?: string; meetingId?: string; action?: MeetingAction; message?: string; reaction?: string }
   const identity = await simulationRunIdentity(request, body.organizationId)
   if (!identity) return NextResponse.json({ error: 'Sign in to access this simulation run.' }, { status: 401 })
   const meeting = meetingFor(body.meetingId)
@@ -34,28 +59,36 @@ export async function POST(request: NextRequest) {
   if (body.action === 'start') {
     if (!active) {
       await append(identity.runId, 'meeting_started', { meetingId: meeting.id, scheduleId: meeting.scheduleId, channelId: meeting.channelId })
-      // First-day manager check-in is the introduction ceremony after onboarding.
-      if (meeting.id === 'manager-checkin') {
-        const introSequence: Array<{ authorId: string; message: string; expression: string }> = [
-          { authorId: 'marcus', message: 'Welcome to SignalDesk, Alex. This is our first working check-in — introduce yourself, then we will agree how we collaborate.', expression: 'happy' },
-          { authorId: 'maya', message: 'Hi Alex. I own product outcomes for usage alerts. Bring me context early when a change could affect what we ship.', expression: 'speaking' },
-          { authorId: 'noah', message: 'Welcome. Keep assumptions written down, cover legacy behavior with tests, and use the PR to explain why a change is safe.', expression: 'speaking' },
-          { authorId: 'devon', message: 'I surface integration risks directly. A useful handoff includes the reproduction, affected surface, and the test that creates confidence.', expression: 'speaking' },
-          { authorId: 'marcus', message: 'Your turn, Alex. Introduce yourself, say what you want to learn, and ask one initial question before we return to scheduled work.', expression: 'thinking' },
-        ]
-        for (const item of introSequence) {
-          await append(identity.runId, 'meeting_agent_replied', {
-            meetingId: meeting.id, channelId: meeting.channelId, authorId: item.authorId, message: item.message, expression: item.expression,
-          })
-        }
-      } else {
-        const facilitator = meeting.facilitatorId
+      // Convener opens with a single turn; remaining opening lines are paced via intro_next.
+      const opening = meetingOpeningScript(meeting)[0]
+      if (opening) {
         await append(identity.runId, 'meeting_agent_replied', {
-          meetingId: meeting.id, channelId: meeting.channelId, authorId: facilitator,
-          message: 'Welcome, everyone. Let us keep this focused: share the decision or risk you need help with, then we will agree a clear next step.',
-          expression: 'happy',
+          meetingId: meeting.id,
+          channelId: meeting.channelId,
+          authorId: opening.authorId,
+          message: opening.message,
+          expression: opening.expression,
+          scriptPhase: 'opening',
+          scriptIndex: 0,
         })
       }
+    }
+  }
+
+  if (body.action === 'intro_next') {
+    if (!active || !session) return NextResponse.json({ error: 'Start the meeting before continuing the opening round.' }, { status: 409 })
+    const next = nextOpeningScriptLine(meeting, session.messages)
+    if (next) {
+      const scriptIndex = meetingOpeningScript(meeting).findIndex((line) => line.authorId === next.authorId && line.message === next.message)
+      await append(identity.runId, 'meeting_agent_replied', {
+        meetingId: meeting.id,
+        channelId: meeting.channelId,
+        authorId: next.authorId,
+        message: next.message,
+        expression: next.expression,
+        scriptPhase: 'opening',
+        scriptIndex: scriptIndex < 0 ? session.messages.length : scriptIndex,
+      })
     }
   }
 
@@ -76,8 +109,14 @@ export async function POST(request: NextRequest) {
     if (!active) return NextResponse.json({ error: 'Start the meeting before requesting a teammate reply.' }, { status: 409 })
     try {
       const turn = await createAgentTurn({
-        organizationId: identity.runId, channelId: meeting.channelId, userMessage: message,
-        channelType: 'meeting', channelPurpose: meeting.title + '. Agenda: ' + meeting.agenda.join('; '),
+        organizationId: identity.runId,
+        channelId: meeting.channelId,
+        userMessage: message,
+        channelType: 'meeting',
+        channelPurpose: meeting.title + '. Agenda: ' + meeting.agenda.join('; ') + '. Participants: ' + meeting.participantIds.join(', ') + '. Convener: ' + meeting.facilitatorId + '.',
+        // Route @mentions to the tagged attendee; otherwise the convener holds the floor.
+        allowedAgentIds: meeting.participantIds,
+        fallbackAgentId: meeting.facilitatorId,
       })
       await append(identity.runId, 'meeting_agent_replied', {
         meetingId: meeting.id, channelId: meeting.channelId, authorId: turn.agent.id, message: turn.message, expression: expressionForMeetingText(turn.message),
@@ -103,6 +142,6 @@ export async function POST(request: NextRequest) {
     await append(identity.runId, 'meeting_ended', { meetingId: meeting.id, channelId: meeting.channelId })
   }
 
-  events = await inMemoryEventStore.list(identity.runId)
-  return NextResponse.json({ meetings: deriveMeetingSessions(events) }, { status: 201 })
+  const result = await payload(identity.runId, meeting.id)
+  return NextResponse.json(result, { status: 201 })
 }

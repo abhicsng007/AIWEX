@@ -39,3 +39,36 @@ export type OrganizationContext = {
   recentDecisions?: string[]
   openFollowUps?: number
 }
+
+export type MentionCandidate = { id: string; name: string }
+
+/** Resolve who a learner is addressing via @id, @First, or @Full Name. */
+export function parseAddressedAgentId(message: string, candidates: MentionCandidate[]): string | null {
+  if (!message.trim() || !candidates.length) return null
+  const text = message.toLowerCase()
+  const ranked = [...candidates].sort((left, right) => right.name.length - left.name.length || right.id.length - left.id.length)
+
+  for (const agent of ranked) {
+    const first = agent.name.split(/\s+/)[0]?.toLowerCase() || agent.id
+    const needles = [
+      `@${agent.id.toLowerCase()}`,
+      `@${agent.name.toLowerCase()}`,
+      `@${first}`,
+    ]
+    if (needles.some((needle) => text.includes(needle))) return agent.id
+  }
+
+  // Natural address: "Maya," / "Maya:" / "Hey Noah "
+  for (const agent of ranked) {
+    const first = agent.name.split(/\s+/)[0] || agent.id
+    if (first.length < 3) continue
+    const pattern = new RegExp(`(?:^|[\\s"'(])@?${escapeRegExp(first)}(?:\\b|[,:!?])`, 'i')
+    if (pattern.test(message)) return agent.id
+  }
+
+  return null
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
