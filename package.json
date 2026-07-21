@@ -6,7 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node tests/helpers/run-tests.mjs all",
+    "test:unit": "node tests/helpers/run-tests.mjs unit",
+    "test:e2e": "node tests/helpers/run-tests.mjs e2e",
+    "test:e2e:live-ai": "node tests/helpers/run-tests.mjs live-ai",
+    "test:e2e:journey": "node scripts/e2e-workflow-simulation.mjs",
+    "test:scenario": "node --test scenarios/signaldesk-web/tests/alerts-panel.test.cjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

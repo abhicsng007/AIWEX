@@ -132,6 +132,26 @@ default in production.
 ~~~bash
 npx tsc --noEmit
 npm run build
+npm run test:unit
+~~~
+
+End-to-end HTTP tests require a running app (demo mode):
+
+~~~bash
+npm run dev
+# in another terminal
+npm run test:e2e
+~~~
+
+Optional longer checks:
+
+~~~bash
+# Full scripted journey including OpenRouter when OPENROUTER_API_KEY is set
+npm run test:e2e:journey
+
+# Require live OpenRouter responses in selected e2e cases
+set AIWEX_LIVE_AI=1
+npm run test:e2e:live-ai
 ~~~
 
 I use the following acceptance path when checking the core experience:
@@ -141,6 +161,9 @@ onboarding -> stand-up -> teammate message -> workspace revision
 -> scenario checks -> commit -> pull request -> review response
 -> approval -> merge rationale -> merge -> issue complete -> task report
 ~~~
+
+Automated coverage lives under `tests/unit` (domain pure logic) and `tests/e2e`
+(HTTP API journeys against a live server).
 
 ## Security and privacy
 
