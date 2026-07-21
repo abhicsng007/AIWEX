@@ -101,6 +101,30 @@ function ReportCard({ report, index, open, onToggle }: { report: DeliveryReport;
           : <p>No workflow evidence was available when this snapshot was created.</p>}
       </section>
 
+      {isFinal && report.performanceNarrative && (
+        <section className="performance-narrative" aria-label="How the learner fared">
+          <div className="report-section-head">
+            <span className="eyebrow">HOW YOU FARED</span>
+            <small>Written assessment from the evidence trail</small>
+          </div>
+          <p className="performance-narrative-intro">
+            The following sections describe performance in plain language. They are grounded in the recorded work above, without restating scores or raw metrics.
+          </p>
+          {([
+            ['Technical execution', report.performanceNarrative.technicalExecution],
+            ['Collaboration', report.performanceNarrative.collaboration],
+            ['Ownership & reliability', report.performanceNarrative.ownershipReliability],
+            ['Process fit', report.performanceNarrative.processFit],
+            ['Work readiness', report.performanceNarrative.workReadiness],
+          ] as const).map(([title, body]) => (
+            <article className="performance-narrative-block" key={title}>
+              <h3>{title}</h3>
+              <p>{body}</p>
+            </article>
+          ))}
+        </section>
+      )}
+
       <p className="report-disclaimer">
         This portfolio is generated only from append-only simulation events (ids, timestamps, and metadata).
         It is practice evidence for this scenario, not an employer verification or hiring decision.

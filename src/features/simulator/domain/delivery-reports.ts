@@ -1,5 +1,7 @@
+import { assessSimulation } from './assessment'
 import { scenarioLevelFromEvents, taskIdsForScenarioLevel, type ScenarioLevel } from './difficulty'
 import { issuesForScenarioLevel } from './difficulty'
+import { meetsPerformanceTarget, loadTestResultsFromEvents } from './performance'
 import type { SimulationEvent } from './types'
 
 export type RecruiterSignalStatus = 'verified' | 'partial' | 'needs_evidence'
@@ -22,6 +24,15 @@ export type DeliveryReportTimelineItem = {
   eventId: string
 }
 
+/** Qualitative end-of-project write-up. Grounded in ledger facts, without scores or raw metrics. */
+export type PerformanceNarrative = {
+  technicalExecution: string
+  collaboration: string
+  ownershipReliability: string
+  processFit: string
+  workReadiness: string
+}
+
 export type DeliveryReport = {
   id: string
   kind: 'task' | 'project'
@@ -38,6 +49,8 @@ export type DeliveryReport = {
   timeline: DeliveryReportTimelineItem[]
   /** Short bullets a recruiter can scan without narrative fluff. */
   evidenceHighlights: string[]
+  /** Final project only: prose assessment of how the learner fared. */
+  performanceNarrative?: PerformanceNarrative
 }
 
 const workflowEventTypes = new Set([
@@ -408,6 +421,174 @@ function allProjectTasksComplete(events: SimulationEvent[]) {
   return Object.values(taskIdsForScenarioLevel).flat().every((id) => completed.has(id))
 }
 
+/**
+ * Qualitative tier used only to choose prose. Numbers never appear in the output.
+ */
+function qualitativeBand(score: number): 'strong' | 'solid' | 'developing' | 'early' {
+  if (score >= 85) return 'strong'
+  if (score >= 70) return 'solid'
+  if (score >= 55) return 'developing'
+  return 'early'
+}
+
+function has(events: SimulationEvent[], type: SimulationEvent['type']) {
+  return events.some((event) => event.type === type)
+}
+
+function hasVerifiedChecks(events: SimulationEvent[]) {
+  return events.some((event) => event.type === 'checks_passed' && event.metadata?.verified === true)
+}
+
+function hasRichReviewReply(events: SimulationEvent[]) {
+  return events.some((event) => {
+    if (event.type !== 'review_reply') return false
+    const text = String(event.metadata?.response || '')
+    return text.length >= 40 && /(test|validat|because|canManageBilling|legacy|role)/i.test(text)
+  })
+}
+
+function hasContextRichChat(events: SimulationEvent[]) {
+  return events.some((event) => {
+    if (event.type !== 'chat_message') return false
+    const text = String(event.metadata?.message || '')
+    return /@[a-z0-9-]+/i.test(text) && /(risk|test|validat|because|scope|legacy|canManageBilling)/i.test(text)
+  })
+}
+
+/**
+ * Prose-only project narratives. Internally uses assessment + event presence;
+ * the text itself avoids scores, counts, percentages, and metric dumps.
+ */
+export function buildPerformanceNarrative(events: SimulationEvent[]): PerformanceNarrative {
+  const assessment = assessSimulation(events)
+  const { technicalExecution, collaboration, ownershipReliability, processFit } = assessment.scores
+  const readiness = Math.round((technicalExecution + collaboration + ownershipReliability + processFit) / 4)
+  const tech = qualitativeBand(technicalExecution)
+  const collab = qualitativeBand(collaboration)
+  const ownership = qualitativeBand(ownershipReliability)
+  const process = qualitativeBand(processFit)
+  const overall = qualitativeBand(readiness)
+
+  const checks = hasVerifiedChecks(events)
+  const commit = has(events, 'commit_created')
+  const pr = has(events, 'pull_request_opened')
+  const merge = has(events, 'pull_request_merged')
+  const standup = has(events, 'standup_posted')
+  const reviewReply = has(events, 'review_reply')
+  const richReply = hasRichReviewReply(events)
+  const approval = has(events, 'approval_granted')
+  const rationale = has(events, 'merge_rationale_recorded')
+  const richChat = hasContextRichChat(events)
+  const missedDeadlines = has(events, 'deadline_missed')
+  const recovery = has(events, 'deadline_extension_requested') || has(events, 'followup_completed')
+  const loadTests = loadTestResultsFromEvents(events)
+  const latestLoad = loadTests.at(-1)
+  const loadMet = latestLoad ? meetsPerformanceTarget(latestLoad) : false
+  const completedAll = allProjectTasksComplete(events)
+
+  const technicalExecutionNarrative = (() => {
+    if (tech === 'strong' && checks && commit && pr && merge) {
+      return completedAll
+        ? 'Across the full Basic through Advanced path, technical work consistently cleared a closed delivery loop. Changes were validated before commit, carried through pull request and merge, and the learner treated verification as part of shipping rather than an afterthought. The overall trail reads as careful implementation discipline rather than ad-hoc patching.'
+        : 'Technical work shows a mature delivery habit: validation before commit, a clear pull-request trail, and merge only after the change was reviewable. The pattern suggests the learner can take a feature from workspace edit to a defensible ship without skipping the engineering safety net.'
+    }
+    if (tech === 'solid' && checks && merge) {
+      return 'Technical execution is credible and mostly complete. Server-side validation and merge evidence are present, so a reviewer can trust that the change was not just asserted but exercised. Some parts of the technical trail are thinner than the strongest runs, yet the core habit of validating and shipping is visible.'
+    }
+    if (checks && !merge) {
+      return 'Technical work is underway with real validation in place, but the trail does not yet close cleanly through review and merge. The learner has shown they can prove a change works; the remaining growth is finishing the full engineering close-out so the work is fully shippable on the record.'
+    }
+    if (!checks) {
+      return 'Technical execution is still forming. Without a clear validation-before-commit pattern, a recruiter cannot yet see whether the learner routinely protects quality before sharing work. Completing server-verified checks and then committing would make this dimension far more persuasive.'
+    }
+    return 'Technical execution shows partial evidence of delivery practice. Strengthening the path from verified checks through commit, reviewable change, and merge would turn isolated actions into a coherent engineering story.'
+  })()
+
+  const collaborationNarrative = (() => {
+    if (collab === 'strong' && richChat && richReply) {
+      return 'Collaboration is one of the clearer strengths in this run. The learner directed questions to teammates, used specific product and validation language, and answered review with enough written context that a reviewer could decide without chasing missing detail. Communication reads as working partnership, not status noise.'
+    }
+    if (collab === 'solid' && (richChat || reviewReply)) {
+      return 'Collaboration is solid. There is evidence of teammate-facing communication and review dialogue, even if not every exchange is equally rich. The learner can operate inside a team channel and review loop; deepening specificity in questions and review responses would make the collaboration trail even more recruiter-ready.'
+    }
+    if (reviewReply && !richChat) {
+      return 'Collaboration shows up most clearly in the review loop, where the learner responded in writing. Team-space conversation is thinner, so the story of day-to-day partnership is less visible than the review exchange. More directed, context-rich teammate messages would balance this dimension.'
+    }
+    if (richChat && !reviewReply) {
+      return 'The learner communicates in team spaces with useful context, which is a positive collaboration signal. Review collaboration is less complete, so the record does not fully show how feedback is absorbed and answered. Closing the review conversation in writing would complete that picture.'
+    }
+    return 'Collaboration evidence is still light. A recruiter looking for partnership habits would want to see directed teammate questions and a substantive written response to review. Those actions turn silent solo work into visible teamwork.'
+  })()
+
+  const ownershipNarrative = (() => {
+    if (ownership === 'strong' && standup && merge && !missedDeadlines) {
+      return 'Ownership and reliability come through as consistent follow-through. Plans were made visible early, work moved to completion, and the ledger does not show missed commitments left unattended. The learner appears able to hold a delivery thread from intention to close without disappearing mid-cycle.'
+    }
+    if (ownership === 'solid' && standup) {
+      return 'Ownership is credible. Stand-up and completion signals show the learner can declare intent and finish work. Reliability is generally intact, with only limited signs of slippage. This is the profile of someone who can be trusted with a scoped assignment and still improve how tightly they manage intermediate commitments.'
+    }
+    if (missedDeadlines && recovery) {
+      return 'Ownership is mixed but recoverable. There is evidence of missed timing pressure, yet recovery actions were also recorded. That combination matters: the learner did not only slip—they re-entered the commitment and left a trail of how they handled it.'
+    }
+    if (missedDeadlines && !recovery) {
+      return 'Ownership is weakened by missed timing without a clear recovery trail. Completing the work is not enough here; a recruiter looking for reliability wants to see that pressure was acknowledged and re-planned, not only that the task eventually finished.'
+    }
+    if (!standup) {
+      return 'Ownership is harder to defend because the early commitment signal is missing. Without a visible plan before implementation, the work can look reactive even when the eventual delivery is fine. Making intent explicit at the start would strengthen this dimension immediately.'
+    }
+    return 'Ownership and reliability are partially visible. There are signs of initiative and completion, but the full arc from declared commitment through controlled close-out is not yet consistently evidenced.'
+  })()
+
+  const processNarrative = (() => {
+    if (process === 'strong' && standup && checks && pr && approval && rationale && merge) {
+      return 'Process fit is strong. The learner moved through the organization’s expected gate sequence—planning, validation, reviewable change, approval, rationale, and merge—without treating process as optional paperwork. The trail suggests comfort with professional delivery norms that a hiring manager can recognize.'
+    }
+    if (process === 'solid' && pr && merge) {
+      return 'Process fit is solid. Pull request and merge discipline are present, so the work entered the team’s review surface rather than staying private. A few process steps are less complete than the ideal path, but the overall behavior aligns with how engineering teams actually ship.'
+    }
+    if (pr && !approval) {
+      return 'Process awareness is emerging: the change was opened for review, which is the right institutional move. The gate is not fully closed, though, because approval and merge rationale are incomplete. Finishing those steps would convert “used the process” into “completed the process.”'
+    }
+    if (!pr) {
+      return 'Process fit is still early. Without a pull-request and review gate on the record, the work looks more like individual progress than team-ready delivery. Using the formal review path would make this dimension much more convincing.'
+    }
+    return 'Process fit shows partial alignment with team delivery norms. Strengthening the end-to-end gate—from plan and checks through review, approval, rationale, and merge—would make the process story as clear as the technical one.'
+  })()
+
+  const readinessNarrative = (() => {
+    const loadClause = latestLoad
+      ? loadMet
+        ? ' Performance evidence was also captured and met the intended staging target, which reinforces operational maturity.'
+        : ' Performance evidence was recorded but did not fully meet the intended staging target, so there is still room to tighten validation under load.'
+      : ''
+    if (overall === 'strong' && completedAll) {
+      return `Overall work readiness is high. Across the full project path, the learner combined technical close-out, teammate communication, ownership of commitments, and respect for delivery process into one coherent body of evidence. A recruiter can follow the story from plan to merge without having to trust unsupported self-description.${loadClause}`
+    }
+    if (overall === 'solid') {
+      return `Overall work readiness is solid. The learner can operate inside a realistic delivery environment and leave a verifiable trail. The profile is already useful for discussion with a hiring manager, with the main growth edge being consistency across every dimension rather than a single missing skill.${loadClause}`
+    }
+    if (overall === 'developing') {
+      return `Overall work readiness is developing. Important pieces of professional practice appear in the ledger, but the full combination of technical proof, collaboration, ownership, and process close-out is not yet evenly strong. Continued runs that finish every gate would raise confidence quickly.${loadClause}`
+    }
+    return `Overall work readiness is still early. The simulation has begun to capture how the learner works, yet a recruiter would currently see more potential than a complete professional delivery story. Completing stand-up, validation, review, and merge as one habit is the fastest way to change that impression.${loadClause}`
+  })()
+
+  // Strip any accidental digits so narratives stay prose-only even if future edits slip.
+  const stripData = (text: string) => text
+    .replace(/\b\d+(\.\d+)?%?\b/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .trim()
+
+  return {
+    technicalExecution: stripData(technicalExecutionNarrative),
+    collaboration: stripData(collaborationNarrative),
+    ownershipReliability: stripData(ownershipNarrative),
+    processFit: stripData(processNarrative),
+    workReadiness: stripData(readinessNarrative),
+  }
+}
+
 export function createProjectDeliveryReport(events: SimulationEvent[], input: { createdAt: string; id: string }): DeliveryReport | null {
   if (!allProjectTasksComplete(events)) return null
   const signals = signalsForCycle(events, { level: 'project' })
@@ -444,6 +625,7 @@ export function createProjectDeliveryReport(events: SimulationEvent[], input: { 
       `Tasks completed: ${completedTasks.length}/${taskCount}`,
       `Total ledger events: ${events.length}`,
     ],
+    performanceNarrative: buildPerformanceNarrative(events),
   }
 }
 
@@ -456,8 +638,8 @@ function isReport(value: unknown): value is DeliveryReport {
     && Array.isArray(candidate.timeline)
 }
 
-function normalizeReport(report: DeliveryReport): DeliveryReport {
-  return {
+function normalizeReport(report: DeliveryReport, events: SimulationEvent[]): DeliveryReport {
+  const normalized: DeliveryReport = {
     ...report,
     strengths: Array.isArray(report.strengths) ? report.strengths : [],
     evidenceHighlights: Array.isArray(report.evidenceHighlights) ? report.evidenceHighlights : [],
@@ -470,6 +652,11 @@ function normalizeReport(report: DeliveryReport): DeliveryReport {
       }
     }),
   }
+  // Older project snapshots may lack prose narratives; rebuild from the full ledger.
+  if (normalized.kind === 'project' && !normalized.performanceNarrative && allProjectTasksComplete(events)) {
+    normalized.performanceNarrative = buildPerformanceNarrative(events)
+  }
+  return normalized
 }
 
 export function deliveryReportsFromEvents(events: SimulationEvent[]): DeliveryReport[] {
@@ -477,7 +664,7 @@ export function deliveryReportsFromEvents(events: SimulationEvent[]): DeliveryRe
     .filter((event) => event.type === 'task_report_created' || event.type === 'project_report_created')
     .map((event) => event.metadata?.report)
     .filter(isReport)
-    .map(normalizeReport)
+    .map((report) => normalizeReport(report, events))
     .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
 }
 

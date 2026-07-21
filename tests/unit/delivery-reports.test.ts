@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  buildPerformanceNarrative,
   createProjectDeliveryReport,
   createTaskDeliveryReport,
   deliveryReportsFromEvents,
@@ -78,6 +79,36 @@ describe('delivery reports', () => {
   it('returns null project report until the full project path is complete', () => {
     const empty = createProjectDeliveryReport([], { id: 'p1', createdAt: new Date().toISOString() })
     assert.equal(empty, null)
+  })
+
+  it('writes qualitative performance narratives without raw scores or metrics', () => {
+    const events = [
+      ...cycleEvents('PROJ-184', 'basic'),
+      event('task_completed', { issueId: 'PROJ-184', level: 'basic' }),
+      event('scenario_level_selected', { level: 'intermediate' }),
+      ...cycleEvents('PROJ-191', 'intermediate'),
+      event('task_completed', { issueId: 'PROJ-191', level: 'intermediate' }),
+      ...cycleEvents('PROJ-189', 'intermediate'),
+      event('task_completed', { issueId: 'PROJ-189', level: 'intermediate' }),
+      event('scenario_level_selected', { level: 'advanced' }),
+      ...cycleEvents('PROJ-203', 'advanced'),
+      event('task_completed', { issueId: 'PROJ-203', level: 'advanced' }),
+      ...cycleEvents('PROJ-204', 'advanced'),
+      event('task_completed', { issueId: 'PROJ-204', level: 'advanced' }),
+      ...cycleEvents('PROJ-205', 'advanced'),
+      event('task_completed', { issueId: 'PROJ-205', level: 'advanced' }),
+    ]
+    const project = createProjectDeliveryReport(events, { id: 'p-final', createdAt: new Date().toISOString() })
+    assert.ok(project)
+    assert.ok(project.performanceNarrative)
+    const narrative = project.performanceNarrative
+    for (const text of Object.values(narrative)) {
+      assert.ok(text.length > 80)
+      assert.ok(!/\b\d+(\.\d+)?%?\b/.test(text), `narrative should not include raw numbers: ${text}`)
+      assert.ok(!/score|p95|req\/s|sourceHash/i.test(text), `narrative should stay prose-only: ${text}`)
+    }
+    const rebuilt = buildPerformanceNarrative(events)
+    assert.ok(rebuilt.workReadiness.includes('readiness') || rebuilt.workReadiness.length > 40)
   })
 
   it('collects task reports from ledger events', () => {
