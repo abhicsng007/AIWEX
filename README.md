@@ -54,6 +54,13 @@ a self-written claim.
   notifications, schedules, deadlines, and follow-ups.
 - Issues, a work calendar, task progression, and Basic, Intermediate, and
   Advanced learning paths.
+
+  | Level | Workload | Agent behavior | Real-world pressure |
+  | --- | --- | --- | --- |
+  | Basic | One simple task at a time | Proactive, helpful, quick replies | Clear deadlines and light dependencies |
+  | Intermediate | 2–3 related tasks | Busy agents; learners must ask clearly and follow up | Conflicting priorities, dependencies, tighter deadlines |
+  | Advanced | Multiple hard, interdependent tasks | Mixed personalities, occasional unavailability, challenging collaboration | Escalations, peer-support requests, scope changes, release pressure |
+
 - An editable scenario workspace with source revisions, server-side checks,
   commits, pull requests, review, approval, merge rationale, and completion
   gates.
