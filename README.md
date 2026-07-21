@@ -218,9 +218,9 @@ onboarding -> stand-up -> teammate message -> workspace revision
   browser workbench.
 
 ## How GPT helped me
-<mark>
-> **Built with GPT-5.6 Terra (Codex)** — AIWEX was developed from scratch through
-> multiple Codex conversations with GPT as a development collaborator.</mark>
+
+> <mark>**Built with GPT-5.6 Terra (Codex)** — AIWEX was developed from scratch through</mark>
+> <mark>multiple Codex conversations with GPT as a development collaborator.</mark>
 
 
 <mark>GPT helped me move from the original idea to a working Next.js product:</mark>
