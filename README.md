@@ -127,43 +127,71 @@ Keep server-only keys out of browser-visible environment variables. For a
 production demo deployment, set DEMO_MODE=true explicitly; it is disabled by
 default in production.
 
-## Verify changes
+## Tests
+
+AIWEX uses Node’s built-in test runner (`node:test`). There are two automated
+layers, plus an optional long journey script.
+
+| Layer | Location | Needs server? | What it covers |
+| --- | --- | --- | --- |
+| Unit | `tests/unit` | No | Domain pure logic: workflow gates, onboarding phases, progression unlocks, assessment scores, accountability, performance evidence, difficulty queues, delivery reports |
+| End-to-end | `tests/e2e` | Yes (`npm run dev`) | Real HTTP APIs: demo auth, full onboarding, workflow gates, workspace validate, basic→advanced delivery, agent turns, schedule/meetings, team welcome, feedback, load tests |
+| Journey script | `scripts/e2e-workflow-simulation.mjs` | Yes | One disposable demo run from onboarding through all Basic, Intermediate, and Advanced tasks; uses OpenRouter when `OPENROUTER_API_KEY` is set |
+
+Shared helpers live in `tests/helpers` (cookie-aware HTTP client, fixtures, and
+onboarding/delivery flow builders). Each e2e test uses its own demo cookie so
+runs stay isolated.
+
+### Commands
 
 ~~~bash
+# Typecheck and production build
 npx tsc --noEmit
 npm run build
+
+# Unit tests only (no server)
 npm run test:unit
-~~~
 
-End-to-end HTTP tests require a running app (demo mode):
-
-~~~bash
+# End-to-end HTTP tests (start the app first)
 npm run dev
 # in another terminal
 npm run test:e2e
-~~~
 
-Optional longer checks:
+# Unit + e2e together
+npm run test
 
-~~~bash
-# Full scripted journey including OpenRouter when OPENROUTER_API_KEY is set
+# Scenario fixture checks for the usage-alerts workspace
+npm run test:scenario
+
+# Long scripted journey (onboarding → all levels)
 npm run test:e2e:journey
 
-# Require live OpenRouter responses in selected e2e cases
-set AIWEX_LIVE_AI=1
+# Agent/journey cases that require live OpenRouter replies
 npm run test:e2e:live-ai
 ~~~
 
-I use the following acceptance path when checking the core experience:
+### Environment notes for tests
+
+| Variable | Effect |
+| --- | --- |
+| `AIWEX_BASE_URL` | Override the e2e base URL (default `http://localhost:3000`) |
+| `AIWEX_REQUIRE_SERVER=1` | Fail e2e instead of skipping when the app is not reachable |
+| `AIWEX_LIVE_AI=1` | Assert teammate turns came from OpenRouter (not the deterministic fallback) |
+| `OPENROUTER_API_KEY` | Enables live AI on the server for agent-turn e2e and the journey script |
+| `DEMO_MODE` | Must not be `false` in development so `/demo` cookies work for e2e |
+
+If the server is down, e2e tests skip with a short message unless
+`AIWEX_REQUIRE_SERVER=1` is set.
+
+### Manual acceptance path
+
+I still use this path when checking the core UI experience by hand:
 
 ~~~text
 onboarding -> stand-up -> teammate message -> workspace revision
 -> scenario checks -> commit -> pull request -> review response
 -> approval -> merge rationale -> merge -> issue complete -> task report
 ~~~
-
-Automated coverage lives under `tests/unit` (domain pure logic) and `tests/e2e`
-(HTTP API journeys against a live server).
 
 ## Security and privacy
 
@@ -190,9 +218,10 @@ Automated coverage lives under `tests/unit` (domain pure logic) and `tests/e2e`
   browser workbench.
 
 ## How GPT helped me
-
+<mark>
 > **Built with GPT-5.6 Terra (Codex)** — AIWEX was developed from scratch through
 > multiple Codex conversations with GPT as a development collaborator.
+
 
 GPT helped me move from the original idea to a working Next.js product:
 
@@ -209,7 +238,7 @@ vision, learning experience, acceptance criteria, credentials, configuration,
 deployment, and final decisions. GPT-5.6 Terra was used during development;
 optional live teammate responses are provided through the configured OpenRouter
 model, with a deterministic fallback for the core simulation.
-
+</mark>
 **Note:** All changes before my commit "resolved missing o auth icons" that accounts for more than 90% of work are done using GPT 5.6 terra only.
 
 ## Current direction
