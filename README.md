@@ -2,28 +2,41 @@
 
 ## My vision
 
-I built AIWEX because learning to code is only one part of becoming a software
-engineer. The first real job also expects you to understand tickets, communicate
-your plan, ask useful questions, work with deadlines, validate changes, respond
-to review, and explain why a change is ready to ship.
+I built AIWEX because whenever a student moves out to find a job, they are often
+filtered out in the early stages for lack of work experience. Recruiters also
+cannot trust many of the projects on a portfolio — metrics get inflated, impact
+gets overstated, and it is hard to tell what someone actually did.
 
-Those expectations can feel invisible when you have never worked in a software
-team before. AIWEX gives new developers a safe place to practise them.
+The same pattern shows up with early-career professionals: people claim work
+they did not really own, then get caught in interviews or later when they must
+do the real job. The skills that matter most — tickets, stand-ups, review,
+deadlines, collaboration, and shipping under real constraints — are usually
+learned only after you are already employed.
 
-AIWEX is a realistic, private workplace simulation where a learner joins a
-fictional product team, works through a delivery scenario, and builds an
-evidence trail of the decisions they made along the way.
+AIWEX exists so anyone can learn those workplace skills without being employed
+first. It is a realistic, private workplace simulation where a learner joins a
+fictional product team, works through delivery scenarios, and builds an
+evidence trail of decisions and outcomes that cannot be faked on a resume.
 
 ## What problem I am trying to solve
 
-Many coding platforms stop once a solution passes tests. In real teams, that is
-only part of the work. A developer also needs to understand the context behind a
-request, protect existing behaviour, make progress visible, invite review, act
-on feedback, and close the loop responsibly.
+Hiring and early career both suffer from a trust and experience gap:
 
-Without workplace experience, it is difficult to practise those habits or show
-them credibly. AIWEX is designed to make that process understandable before it
-has real-world consequences.
+1. **Students are screened out for “no experience.”** Without a real job, they
+   have little credible signal that they can work like an engineer on a team.
+2. **Portfolios and project claims are hard to trust.** Self-written metrics and
+   polished write-ups do not prove how someone collaborated, handled review, or
+   shipped under constraints.
+3. **Resume inflation backfires.** Early-career professionals who overclaim
+   get exposed in interviews or on the job — and teams pay the cost of the gap
+   between stated and actual capability.
+4. **Workplace habits are gated behind employment.** Tickets, communication,
+   validation, feedback, and ownership are hard to practise safely before the
+   first role, yet those are exactly what the first role expects.
+
+Coding platforms stop once tests pass. Real teams need context, protected
+behaviour, visible progress, review, and responsible closure. AIWEX makes that
+process learnable and verifiable before it has real-world consequences.
 
 ## What a learner can do
 
