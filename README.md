@@ -220,25 +220,25 @@ onboarding -> stand-up -> teammate message -> workspace revision
 ## How GPT helped me
 <mark>
 > **Built with GPT-5.6 Terra (Codex)** — AIWEX was developed from scratch through
-> multiple Codex conversations with GPT as a development collaborator.
+> multiple Codex conversations with GPT as a development collaborator.</mark>
 
 
-GPT helped me move from the original idea to a working Next.js product:
+<mark>GPT helped me move from the original idea to a working Next.js product:</mark>
 
-- **Design** — workplace simulation structure and learning experience
-- **Implementation** — onboarding, role-based collaboration, workspace, and
-  pull-request workflow
-- **Hardening** — private runs, server-side validation, and reliable local demos
-- **Debugging** — integration issues, UI problems, and build failures
-- **Documentation** — project docs, learner guides, and this README
+- <mark>**Design** — workplace simulation structure and learning experience</mark>
+- <mark>**Implementation** — onboarding, role-based collaboration, workspace, and
+  pull-request workflow</mark>
+- <mark>**Hardening** — private runs, server-side validation, and reliable local demos</mark>
+- <mark>**Debugging** — integration issues, UI problems, and build failures</mark>
+- <mark>**Documentation** — project docs, learner guides, and this README</mark>
 
-I used Codex as a partner for exploration, implementation, debugging, and
+<mark>I used Codex as a partner for exploration, implementation, debugging, and
 review—not as an unexamined code generator. I retained ownership of the product
 vision, learning experience, acceptance criteria, credentials, configuration,
 deployment, and final decisions. GPT-5.6 Terra was used during development;
 optional live teammate responses are provided through the configured OpenRouter
-model, with a deterministic fallback for the core simulation.
-</mark>
+model, with a deterministic fallback for the core simulation.</mark>
+
 **Note:** All changes before my commit "resolved missing o auth icons" that accounts for more than 90% of work are done using GPT 5.6 terra only.
 
 ## Current direction
