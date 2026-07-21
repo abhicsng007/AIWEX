@@ -215,6 +215,7 @@ npm run test:e2e:journey
 | `/demo` asks for login or lands on home with demo disabled | On **Vercel**, set `DEMO_MODE=true` (Production + Preview) and **redeploy**. Demos are off in production by default. |
 | Complete showcase empty after load on Vercel | Set Supabase service-role vars so demo events persist across serverless instances |
 | Complete showcase times out on Vercel Hobby | Needs longer function duration (Pro ≥60s) or use `/demo` / `/demo?onboarding=1` instead |
+| Complete showcase: `node --test ... alerts-panel.test.cjs` failed | Fixed in current code: Vercel uses in-process fixture verification. Redeploy latest main. |
 | Auth UI says keys are missing | Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
 | Events disappear after restart | Expected without Supabase; configure service-role env + migrations for durability |
 | Workspace checks fail | Ensure you ran `npm ci` at the repo root (scenario tests live under `scenarios/`) |
