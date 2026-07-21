@@ -133,7 +133,8 @@ Minimum notes:
 | Sign-in (Google / GitHub / magic link) | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
 | Durable events + file uploads | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` + run SQL migrations in `supabase/migrations/` |
 | Live AI teammates | `OPENROUTER_API_KEY` (and optionally `OPENROUTER_MODELS`) |
-| Production demos | `DEMO_MODE=true` (disabled by default when `NODE_ENV=production`) |
+| Production / Vercel demos | **`DEMO_MODE=true`** (required — demos are off in production by default) |
+| Vercel multi-instance demos | Also set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` so demo ledgers persist |
 
 Never put service-role keys in `NEXT_PUBLIC_*` variables. See [Configuration](#configuration)
 and `docs/supabase-backend.md` / `docs/openrouter.md` for details.
@@ -211,7 +212,9 @@ npm run test:e2e:journey
 | Symptom | What to try |
 | --- | --- |
 | Port 3000 already in use | Stop the other process, or run `npx next dev -p 3001` and open that port |
-| `/demo` redirects to sign-in in production build | Set `DEMO_MODE=true` in `.env.local` |
+| `/demo` asks for login or lands on home with demo disabled | On **Vercel**, set `DEMO_MODE=true` (Production + Preview) and **redeploy**. Demos are off in production by default. |
+| Complete showcase empty after load on Vercel | Set Supabase service-role vars so demo events persist across serverless instances |
+| Complete showcase times out on Vercel Hobby | Needs longer function duration (Pro ≥60s) or use `/demo` / `/demo?onboarding=1` instead |
 | Auth UI says keys are missing | Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
 | Events disappear after restart | Expected without Supabase; configure service-role env + migrations for durability |
 | Workspace checks fail | Ensure you ran `npm ci` at the repo root (scenario tests live under `scenarios/`) |
@@ -233,6 +236,68 @@ npm run test:e2e:journey
 Keep server-only keys out of browser-visible environment variables. For a
 production demo deployment, set DEMO_MODE=true explicitly; it is disabled by
 default in production.
+
+## Deployed app (Vercel)
+
+Public deployment: **https://aiwex.vercel.app**
+
+The production build is the same Next.js app as local, with a few important
+differences from `npm run dev`.
+
+### Required production settings
+
+In the Vercel project → **Settings → Environment Variables** (Production, and
+Preview if you want demos on preview URLs), then **redeploy**:
+
+| Variable | Production value | Notes |
+| --- | --- | --- |
+| `DEMO_MODE` | `true` | **Required** for `/demo` links. Off by default in production. |
+| `SUPABASE_URL` | project URL | Recommended so demo/auth ledgers survive serverless instances |
+| `SUPABASE_SERVICE_ROLE_KEY` | service role key | Server-only; never `NEXT_PUBLIC_` |
+| `NEXT_PUBLIC_SUPABASE_URL` | project URL | Only if you enable real sign-in |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon/publishable key | Only if you enable real sign-in |
+| `OPENROUTER_API_KEY` | optional | Live AI teammates; omit to use the deterministic provider |
+| `THEIA_ENABLED` | `false` | **Keep disabled** on the shared Vercel deployment |
+
+More detail: `docs/production-deployment.md`.
+
+### Theia IDE on Vercel
+
+The optional Eclipse Theia workbench is **disabled** on https://aiwex.vercel.app.
+
+- Production uses the **built-in workspace** only.
+- Leave `THEIA_ENABLED=false` (or unset). Do not point a shared Vercel deploy at
+  a local Theia URL.
+- Theia is a separate, heavier stack for isolated local/beta experiments; see
+  `docs/theia-integration.md` if you run it yourself.
+
+### Demo links (same paths as localhost)
+
+Disposable demos do **not** require sign-in. Use the same routes as local, with
+the production host:
+
+| Link | What you get |
+| --- | --- |
+| https://aiwex.vercel.app/demo?onboarding=1 | Clean start: full onboarding academy |
+| https://aiwex.vercel.app/demo | Pre-qualified Day-1 project access |
+| https://aiwex.vercel.app/demo?complete=1 | Full Basic → Intermediate → Advanced showcase |
+
+Also available from the landing page:
+
+- https://aiwex.vercel.app — **Try the demo** / **Full journey showcase**
+- https://aiwex.vercel.app/sign-in — create or continue a real account
+
+Compared to localhost:
+
+| | Local (`localhost:3000`) | Vercel (`aiwex.vercel.app`) |
+| --- | --- | --- |
+| Demo mode default | On (unless `DEMO_MODE=false`) | Off until `DEMO_MODE=true` |
+| Event storage without Supabase | Process memory (fine for one `next dev`) | Not reliable across instances — configure Supabase |
+| Theia workbench | Optional local experiment | Disabled on this deployment |
+| Complete showcase | ~30–60s | Same path; allow enough function duration (prefer ≥60s) |
+
+If `/demo` sends you back to the home page with a demo-disabled message, set
+`DEMO_MODE=true` on Vercel and redeploy.
 
 ## Tests
 

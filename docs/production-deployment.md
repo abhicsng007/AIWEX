@@ -11,6 +11,27 @@ AIWEX can be deployed as a Next.js application to Vercel, or built as the includ
 5. Point the platform health probe at `GET /api/health`.
 6. Set `SIMULATION_CRON_SECRET` and invoke `POST /api/internal/simulation/tick` with `Authorization: Bearer <secret>` every minute. This releases scheduled agent work and deadline consequences even when no learner has the app open.
 
+## Vercel demo mode (`/demo`, `/demo?complete=1`)
+
+Demo routes are **off in production** unless you opt in. Local `next dev` enables them by default.
+
+In the Vercel project → **Settings → Environment Variables** (Production and Preview):
+
+| Variable | Value | Why |
+| --- | --- | --- |
+| `DEMO_MODE` | `true` | Without this, `/demo` returns to the landing page (previously looked like “login required”) |
+| `SUPABASE_URL` | your project URL | Multi-instance Vercel needs durable storage for demo ledgers |
+| `SUPABASE_SERVICE_ROLE_KEY` | service role key | Server-only; never `NEXT_PUBLIC_` |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | optional | Only for real sign-in, not for demos |
+
+Then **Redeploy** so the runtime picks up the vars.
+
+Notes:
+
+- `/demo?complete=1` builds the showcase **in-process** (one function invocation). Prefer a plan that allows **≥60s** function duration (`maxDuration` is set to 120 on the demo route).
+- Without Supabase, demo events live only in memory on one instance and often disappear on the next request on Vercel.
+- With `DEMO_MODE=true` + Supabase service role configured, demo cookies and complete showcases work across instances.
+
 ## Container deployment
 
 ```bash

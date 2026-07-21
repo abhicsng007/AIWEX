@@ -17,10 +17,23 @@ type SharedEventBus = { events: SimulationEvent[]; listeners: Set<(event: Simula
 const globalBus = globalThis as typeof globalThis & { __shiftlineEventBus?: SharedEventBus }
 const sharedBus = globalBus.__shiftlineEventBus ||= { events: [], listeners: new Set<(event: SimulationEvent) => void>() }
 
+/**
+ * When Supabase is configured, demo runs are persisted too so multi-instance
+ * hosts (Vercel) can serve /demo after the request that created the cookie.
+ * Without Supabase, demos only live in process memory (fine for local `next dev`).
+ */
+function useDurableLedger(organizationId: string) {
+  return Boolean(getSupabaseAdmin()) && (
+    !isDemoRunId(organizationId)
+    || process.env.DEMO_MODE === 'true'
+    || process.env.NODE_ENV !== 'production'
+  )
+}
+
 export const inMemoryEventStore: SimulationEventStore = {
   async append(event) {
     const supabase = getSupabaseAdmin()
-    if (supabase && !isDemoRunId(event.organizationId)) {
+    if (supabase && useDurableLedger(event.organizationId)) {
       const { error } = await supabase.from('simulation_events').insert({ id: event.id, organization_id: event.organizationId, type: event.type, created_at: event.createdAt, metadata: event.metadata || {} })
       if (error) throw new Error(`Could not persist simulation event: ${error.message}`)
     }
@@ -28,7 +41,7 @@ export const inMemoryEventStore: SimulationEventStore = {
   },
   async list(organizationId) {
     const supabase = getSupabaseAdmin()
-    if (supabase && !isDemoRunId(organizationId)) {
+    if (supabase && useDurableLedger(organizationId)) {
       const { data, error } = await supabase.from('simulation_events').select('id, organization_id, type, created_at, metadata').eq('organization_id', organizationId).order('created_at', { ascending: true })
       if (error) throw new Error(`Could not load simulation events: ${error.message}`)
       return (data || []).map((event) => ({ id: event.id, organizationId: event.organization_id, type: event.type as SimulationEvent['type'], createdAt: event.created_at, metadata: event.metadata as SimulationEvent['metadata'] }))

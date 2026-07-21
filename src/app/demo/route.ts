@@ -43,14 +43,29 @@ function setDemoCookie(response: NextResponse, request: NextRequest, runId: stri
   return response
 }
 
+function demoErrorRedirect(request: NextRequest, message: string) {
+  // Never send demo failures to /sign-in — that reads as "login required".
+  const url = new URL('/', request.url)
+  url.searchParams.set('error', message)
+  return clearDemoCookie(NextResponse.redirect(url), request)
+}
+
 /**
  * Demo entry points:
  * - /demo?onboarding=1  → clean onboarding journey
  * - /demo               → pre-qualified Day-1 project access (seeded events)
- * - /demo?complete=1    → full Basic→Advanced journey via real HTTP APIs + reports
+ * - /demo?complete=1    → full Basic→Advanced journey (in-process, real checks once)
+ *
+ * Production hosts (Vercel) must set DEMO_MODE=true. Without it this route
+ * refuses demos and returns to the landing page with an error — not sign-in.
  */
 export async function GET(request: NextRequest) {
-  if (!demoModeEnabled()) return NextResponse.redirect(new URL('/sign-in?error=Demo+mode+is+disabled.', request.url))
+  if (!demoModeEnabled()) {
+    return demoErrorRedirect(
+      request,
+      'Demo mode is disabled on this deployment. Set DEMO_MODE=true in the Vercel project environment variables, then redeploy.',
+    )
+  }
   // Signed-in learners already own a private run. Never attach a demo cookie to
   // an authenticated browser — that previously made demo UI state feel "saved"
   // into the real account after sign-up.
@@ -64,13 +79,14 @@ export async function GET(request: NextRequest) {
 
   if (completeJourney) {
     // Always use a fresh disposable run so the showcase is isolated and complete.
+    // Built in-process (no HTTP self-fetch) so serverless multi-instance hosts work
+    // when demo events are durable (Supabase) or within the same request.
     const runId = createDemoRunId()
     try {
       await driveCompleteShowcaseJourney(request.nextUrl.origin, runId)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not build the complete demo journey.'
-      const failed = clearDemoCookie(NextResponse.redirect(new URL(`/sign-in?error=${encodeURIComponent(message)}`, request.url)), request)
-      return failed
+      return demoErrorRedirect(request, message)
     }
     const response = NextResponse.redirect(new URL('/demo/workspace', request.url))
     return setDemoCookie(response, request, runId)

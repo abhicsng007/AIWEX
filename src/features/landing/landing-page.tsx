@@ -1,7 +1,8 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Activity, ArrowRight, BadgeCheck, CalendarDays, CheckCircle2, Code2, GitPullRequest, Layers3, Play, ShieldCheck, Sparkles, UsersRound } from 'lucide-react'
+import { Activity, ArrowRight, BadgeCheck, CalendarDays, CheckCircle2, CircleAlert, Code2, GitPullRequest, Layers3, Play, ShieldCheck, Sparkles, UsersRound } from 'lucide-react'
 
 const proof = [
   { icon: UsersRound, title: 'An AI team that feels present', text: 'Work with a manager, PM, designer, peer engineer, and tech lead who remember context and respond to your decisions.' },
@@ -29,9 +30,21 @@ function WorkPreview() {
 }
 
 export default function LandingPage() {
+  const [bannerError, setBannerError] = useState('')
+  useEffect(() => {
+    const error = new URLSearchParams(window.location.search).get('error')
+    if (error) setBannerError(error)
+  }, [])
+
   return (
     <main className="landing-shell">
       <header className="landing-nav"><Link href="/" className="landing-brand"><span className="brand-mark landing-brand-mark"><Layers3 size={18} aria-hidden="true" /></span> AIWEX</Link><nav><a href="#experience">Experience</a><a href="#workflow">How it works</a><a href="#results">Outcomes</a><Link className="landing-login" href="/sign-in">Sign in <ArrowRight size={13} /></Link></nav></header>
+      {bannerError && (
+        <div className="landing-error-banner" role="alert">
+          <CircleAlert size={16} />
+          <span>{bannerError}</span>
+        </div>
+      )}
       <section className="landing-hero">
         <div className="landing-copy">
           <p className="landing-eyebrow"><Sparkles size={13} /> A NEW KIND OF ENGINEERING PRACTICE</p>
