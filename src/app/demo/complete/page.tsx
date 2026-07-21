@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, BadgeCheck, Check, CircleAlert, LoaderCircle } from 'lucide-react'
+import { clearDemoClientData } from '@/features/auth/clear-demo-client-data'
 
 type ProgressLine = {
   phase: string
@@ -77,6 +78,8 @@ export default function DemoCompletePreparingPage() {
   useEffect(() => {
     if (started.current) return
     started.current = true
+    // Drop any prior onboarding-demo localStorage before the new cookie lands.
+    clearDemoClientData()
 
     const goHome = (message?: string) => {
       const url = message

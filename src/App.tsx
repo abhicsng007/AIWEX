@@ -387,7 +387,7 @@ function App() {
   const selectedSpaceIdRef = useRef(selectedSpaceId)
   selectedSpaceIdRef.current = selectedSpaceId
 
-  const resetClientSimulationState = () => {
+  const resetClientSimulationState = (options?: { view?: View }) => {
     setStandupDone(false)
     setTestsPassed(false)
     setCommitted(false)
@@ -412,7 +412,7 @@ function App() {
     setLiveEvents([])
     setOnboardingQualified(false)
     setCalendarSchedule([])
-    setView('onboarding')
+    setView(options?.view ?? 'onboarding')
     seenSimulationEventIds.current = new Set()
     announcedSimulationEventIds.current = new Set()
   }
@@ -467,14 +467,22 @@ function App() {
           if (eventCount === 0) {
             // Brand-new signed-up accounts must not inherit any cached UI progress.
             clearLocalProgressForRun(runId)
-            resetClientSimulationState()
+            resetClientSimulationState({ view: 'onboarding' })
             progressHydratedForRun.current = runId
             allowLocalProgressPersist.current = true
           } else {
             hydrateLocalProgress(runId)
           }
         } else {
-          hydrateLocalProgress(runId)
+          // Disposable demos: the server ledger is the source of truth.
+          // Never restore a previous demo's localStorage (e.g. unfinished
+          // onboarding) on top of a completed-journey showcase cookie.
+          clearDemoClientData()
+          clearLocalProgressForRun(runId)
+          resetClientSimulationState({ view: eventCount > 0 ? 'home' : 'onboarding' })
+          progressHydratedForRun.current = runId
+          // Do not re-cache demo UI snapshots — reloads rehydrate from events.
+          allowLocalProgressPersist.current = false
         }
         setOrganizationId(runId)
       } catch { setRunError('Your private simulation run could not be loaded.') }
@@ -538,7 +546,13 @@ function App() {
         const data = await response.json() as { state: { phase: string } }
         const qualified = data.state.phase === 'qualified'
         setOnboardingQualified(qualified)
-        if (!qualified) setView('onboarding')
+        if (!qualified) {
+          setView('onboarding')
+          return
+        }
+        // Completed / pre-qualified demos must leave the onboarding surface even
+        // if a prior session forced that view before events were available.
+        setView((current) => (current === 'onboarding' || current === 'guide' ? 'home' : current))
       } catch { /* The existing backend warning will surface if persistence is unavailable. */ }
     }
     void loadOnboarding()
@@ -640,6 +654,16 @@ function App() {
       if (event.type === 'review_reply') setReviewReplied(true)
       if (event.type === 'approval_granted') setApproved(true)
       if (event.type === 'pull_request_merged') setMerged(true)
+      // Server ledger is authoritative for demos: unlock project surfaces when
+      // onboarding evidence is present even if the dedicated onboarding fetch raced.
+      if (event.type === 'readiness_task_passed' || event.type === 'manager_signoff_recorded') {
+        setOnboardingQualified(true)
+        setView((current) => (current === 'onboarding' || current === 'guide' ? 'home' : current))
+      }
+      if (event.type === 'project_report_created') {
+        setOnboardingQualified(true)
+        setView((current) => (current === 'onboarding' || current === 'guide' ? 'home' : current))
+      }
       if (event.type === 'delivery_cycle_started') resetDeliveryWorkflow()
       if (event.type === 'simulation_time_advanced' && Number.isFinite(Number(metadata.to))) setSimulationMinutes(Number(metadata.to))
       if (event.type === 'scenario_level_selected' && (metadata.level === 'basic' || metadata.level === 'intermediate' || metadata.level === 'advanced')) {
