@@ -217,7 +217,7 @@ onboarding -> stand-up -> teammate message -> workspace revision
 - [Theia integration](docs/theia-integration.md) explains the optional isolated
   browser workbench.
 
-## How GPT helped me
+✨ ## How GPT helped me
 
 > <mark>**Built with GPT-5.6 Terra (Codex)** — AIWEX was developed from scratch through</mark>
 > <mark>multiple Codex conversations with GPT as a development collaborator.</mark>
