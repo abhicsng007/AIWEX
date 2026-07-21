@@ -72,7 +72,7 @@ export default function FunctionalPullRequestsView(props: Props) {
   const [comment, setComment] = useState('')
   const [response, setResponse] = useState('')
   const [rationale, setRationale] = useState('')
-  const storageKey = organizationId ? `shiftline-pr-records:${organizationId}` : null
+  const storageKey = organizationId ? `aiwex-pr-records:${organizationId}` : null
 
   useEffect(() => {
     if (!storageKey) {
@@ -80,7 +80,7 @@ export default function FunctionalPullRequestsView(props: Props) {
       return
     }
     if (organizationId && !organizationId.startsWith('demo-')) {
-      localStorage.removeItem('shiftline-pr-records')
+      localStorage.removeItem('aiwex-pr-records')
     }
     if (showcaseComplete) {
       setRecords(seedCompletedShowcase)

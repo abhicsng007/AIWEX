@@ -11,9 +11,9 @@ export function clearDemoClientData() {
     const key = window.localStorage.key(index)
     if (!key) continue
     if (
-      key.startsWith('shiftline-progress:demo-')
-      || key === 'shiftline-pr-records'
-      || key.startsWith('shiftline-pr-records:demo-')
+      key.startsWith('aiwex-progress:demo-')
+      || key === 'aiwex-pr-records'
+      || key.startsWith('aiwex-pr-records:demo-')
     ) {
       keysToRemove.push(key)
     }
@@ -23,8 +23,8 @@ export function clearDemoClientData() {
 
 export function clearLocalProgressForRun(runId: string | null | undefined) {
   if (typeof window === 'undefined' || !runId) return
-  window.localStorage.removeItem(`shiftline-progress:${runId}`)
-  window.localStorage.removeItem(`shiftline-pr-records:${runId}`)
+  window.localStorage.removeItem(`aiwex-progress:${runId}`)
+  window.localStorage.removeItem(`aiwex-pr-records:${runId}`)
   // Legacy unscoped PR cache from older builds.
-  if (!runId.startsWith('demo-')) window.localStorage.removeItem('shiftline-pr-records')
+  if (!runId.startsWith('demo-')) window.localStorage.removeItem('aiwex-pr-records')
 }

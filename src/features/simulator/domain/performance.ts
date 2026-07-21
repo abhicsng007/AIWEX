@@ -36,7 +36,7 @@ export const usageDashboardLatencyScenario: PerformanceScenario = {
   target: { p95Ms: 450, errorRatePercent: 1, requestsPerSecond: 70 },
   guardrails: [
     'Run only against the disposable scenario-staging target.',
-    'Never point a load test at the Shiftline platform production URL.',
+    'Never point a load test at the Aiwex platform production URL.',
     'Use seeded synthetic data and the assigned concurrency budget.',
   ],
 }

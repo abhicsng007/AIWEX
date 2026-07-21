@@ -14,8 +14,8 @@ export interface SimulationEventStore {
 }
 
 type SharedEventBus = { events: SimulationEvent[]; listeners: Set<(event: SimulationEvent) => void> }
-const globalBus = globalThis as typeof globalThis & { __shiftlineEventBus?: SharedEventBus }
-const sharedBus = globalBus.__shiftlineEventBus ||= { events: [], listeners: new Set<(event: SimulationEvent) => void>() }
+const globalBus = globalThis as typeof globalThis & { __aiwexEventBus?: SharedEventBus }
+const sharedBus = globalBus.__aiwexEventBus ||= { events: [], listeners: new Set<(event: SimulationEvent) => void>() }
 
 /**
  * When Supabase is configured, demo runs are persisted too so multi-instance

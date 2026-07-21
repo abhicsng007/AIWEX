@@ -418,7 +418,7 @@ function App() {
   }
 
   const hydrateLocalProgress = (runId: string) => {
-    const saved = localStorage.getItem(`shiftline-progress:${runId}`)
+    const saved = localStorage.getItem(`aiwex-progress:${runId}`)
     if (!saved) {
       progressHydratedForRun.current = runId
       allowLocalProgressPersist.current = true
@@ -582,7 +582,7 @@ function App() {
     // Wait until the run has decided whether to restore or wipe progress so we
     // never write default/demo UI state into a brand-new authenticated run.
     if (!allowLocalProgressPersist.current || progressHydratedForRun.current !== organizationId) return
-    localStorage.setItem(`shiftline-progress:${organizationId}`, JSON.stringify({ standupDone, testsPassed, committed, prOpen, reviewAddressed, reviewReplied, approved, merged, activity, workspaceCode, messages, teamSpaces, followUps, selectedSpaceId, issues, simulationMinutes, readNotificationIds, scenarioLevel }))
+    localStorage.setItem(`aiwex-progress:${organizationId}`, JSON.stringify({ standupDone, testsPassed, committed, prOpen, reviewAddressed, reviewReplied, approved, merged, activity, workspaceCode, messages, teamSpaces, followUps, selectedSpaceId, issues, simulationMinutes, readNotificationIds, scenarioLevel }))
   }, [organizationId, standupDone, testsPassed, committed, prOpen, reviewAddressed, reviewReplied, approved, merged, activity, workspaceCode, messages, teamSpaces, followUps, selectedSpaceId, issues, simulationMinutes, readNotificationIds, scenarioLevel])
 
   const resetDeliveryWorkflow = () => {
