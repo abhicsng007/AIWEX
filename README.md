@@ -186,6 +186,7 @@ vision, learning experience, acceptance criteria, credentials, configuration,
 deployment, and final decisions. GPT-5.6 Terra was used during development;
 optional live teammate responses are provided through the configured OpenRouter
 model, with a deterministic fallback for the core simulation.
+**Note:** All changes before my commit "resolved missing o auth icons" that accounts for more than 90% of work are done using GPT 5.6 terra only.
 
 ## Current direction
 
