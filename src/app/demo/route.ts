@@ -3,11 +3,10 @@ import { clearDemoCookie, createDemoRunId, demoCookieName, demoModeEnabled, demo
 import { authenticatedActor } from '@/features/auth/server-auth'
 import { accessCatalog, nextScheduleStart, policyRequirements, trainingSlides } from '@/features/simulator/domain/onboarding'
 import type { SimulationEvent } from '@/features/simulator/domain/types'
-import { driveCompleteShowcaseJourney } from '@/features/simulator/server/showcase-demo-journey'
 import { inMemoryEventStore } from '@/features/simulator/server/event-store'
 
 export const runtime = 'nodejs'
-export const maxDuration = 120
+export const maxDuration = 60
 export const dynamic = 'force-dynamic'
 
 function event(organizationId: string, type: SimulationEvent['type'], metadata: SimulationEvent['metadata'] = {}): SimulationEvent {
@@ -78,18 +77,9 @@ export async function GET(request: NextRequest) {
     || request.nextUrl.searchParams.get('journey') === 'complete'
 
   if (completeJourney) {
-    // Always use a fresh disposable run so the showcase is isolated and complete.
-    // Built in-process (no HTTP self-fetch) so serverless multi-instance hosts work
-    // when demo events are durable (Supabase) or within the same request.
-    const runId = createDemoRunId()
-    try {
-      await driveCompleteShowcaseJourney(request.nextUrl.origin, runId)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not build the complete demo journey.'
-      return demoErrorRedirect(request, message)
-    }
-    const response = NextResponse.redirect(new URL('/demo/workspace', request.url))
-    return setDemoCookie(response, request, runId)
+    // Hand off to the preparing UI so users see progress instead of a blank wait.
+    // The client page calls POST /api/demo/showcase and redirects on success/failure.
+    return NextResponse.redirect(new URL('/demo/complete', request.url))
   }
 
   // A clean onboarding recording still bypasses sign-in, but deliberately

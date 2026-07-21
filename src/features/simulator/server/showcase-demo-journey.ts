@@ -182,12 +182,27 @@ async function recordChecksPassed(runId: string, sourceHash: string, durationMs:
   })
 }
 
+export type ShowcaseProgressUpdate = {
+  phase: string
+  message: string
+  /** 0–100 approximate overall progress for the preparing UI. */
+  percent?: number
+}
+
 /**
  * Builds a finished Basic → Advanced demo run entirely in-process.
  * Avoids HTTP self-fetch so Vercel serverless does not split work across instances mid-build.
  */
-export async function driveCompleteShowcaseJourney(_baseUrl: string, runId: string): Promise<ShowcaseJourneySummary> {
+export async function driveCompleteShowcaseJourney(
+  _baseUrl: string,
+  runId: string,
+  onProgress?: (update: ShowcaseProgressUpdate) => void | Promise<void>,
+): Promise<ShowcaseJourneySummary> {
   const steps: string[] = []
+  const report = async (phase: string, message: string, percent?: number) => {
+    steps.push(phase)
+    await onProgress?.({ phase, message, percent })
+  }
   const validSource = await loadValidWorkspaceSource()
   const board = new Map<string, WorkIssue>(seededIssues.map((issue) => [issue.id, { ...issue }]))
 
@@ -202,7 +217,10 @@ export async function driveCompleteShowcaseJourney(_baseUrl: string, runId: stri
     })
   }
 
+  await report('session', 'Creating a disposable demo session…', 4)
+
   // --- Onboarding ---
+  await report('onboarding', 'Completing organizational onboarding…', 12)
   await append(runId, 'onboarding_started')
   await append(runId, 'onboarding_profile_confirmed', {
     employeeId: employeeProfile.employeeId,
@@ -234,9 +252,10 @@ export async function driveCompleteShowcaseJourney(_baseUrl: string, runId: stri
     decision: 'approved_for_project_access',
   })
   await append(runId, 'schedule_created', { startAt: nextScheduleStart(), timezone: 'UTC' })
-  steps.push('qualified')
+  await report('qualified', 'Onboarding complete — project access approved', 22)
 
   // --- Team welcome ---
+  await report('welcome', 'Running team welcome and introduction…', 28)
   const welcomeChannel = 'product-usage'
   await append(runId, 'team_welcome_started', { channelId: welcomeChannel })
   for (const item of [
@@ -258,7 +277,7 @@ export async function driveCompleteShowcaseJourney(_baseUrl: string, runId: stri
     trigger: 'team-welcome',
   })
   await append(runId, 'team_welcome_concluded', { channelId: welcomeChannel })
-  steps.push('team_welcome')
+  await report('team_welcome', 'Team welcome recorded', 34)
 
   await append(runId, 'agent_reply', {
     agentId: 'noah',
@@ -266,7 +285,7 @@ export async function driveCompleteShowcaseJourney(_baseUrl: string, runId: stri
     message: 'For PROJ-184, keep restricted roles on the explanatory empty state when canManageBilling is false, and cover the legacy threshold-less workspace in checks.',
     trigger: 'showcase-agent-turn',
   })
-  steps.push('agent_turn')
+  await report('agent_turn', 'Recording teammate collaboration…', 38)
 
   for (const issue of seededIssues.filter((item) => item.assignee !== 'alex' || item.status === 'done')) {
     await upsertIssue(issuePayload(issue, { status: 'done' }), 'updated')
@@ -275,11 +294,12 @@ export async function driveCompleteShowcaseJourney(_baseUrl: string, runId: stri
   // Real scenario validation once; later tasks reuse the verified source evidence.
   let checks: { sourceHash: string; durationMs: number } | null = null
   const levels: ScenarioLevel[] = ['basic', 'intermediate', 'advanced']
+  const levelPercents: Record<ScenarioLevel, number> = { basic: 48, intermediate: 62, advanced: 78 }
   for (const level of levels) {
+    await report(`level_${level}`, `Delivering ${level} scenario tasks…`, levelPercents[level] - 8)
     await append(runId, 'scenario_level_selected', { level })
     const firstTask = taskIdsForScenarioLevel[level][0]
     await append(runId, 'delivery_cycle_started', { level, taskId: firstTask, sequence: 1 })
-    steps.push(`level_${level}`)
 
     for (const issue of issuesForScenarioLevel(level)) {
       if (!board.has(issue.id)) await upsertIssue(issuePayload(issue, { status: 'todo' }), 'created')
@@ -354,10 +374,11 @@ export async function driveCompleteShowcaseJourney(_baseUrl: string, runId: stri
         })
       }
       await upsertIssue(issuePayload(board.get(taskId)!, { status: 'done', assignee: 'alex' }), 'updated')
-      steps.push(`completed_${taskId}`)
+      await report(`completed_${taskId}`, `Completed ${taskId} through the merge gate`, levelPercents[level])
     }
   }
 
+  await report('performance', 'Recording performance and release evidence…', 84)
   await append(runId, 'load_test_recorded', {
     runId: randomUUID(),
     scenarioId: 'usage-dashboard-latency',
@@ -369,13 +390,12 @@ export async function driveCompleteShowcaseJourney(_baseUrl: string, runId: stri
     requestsPerSecond: 88,
     notes: 'After index and cache fixes on usage summary, p95 dropped below 450ms with stable error rate under 100 concurrent users.',
   })
-  steps.push('load_test_recorded')
   await append(runId, 'scenario_deployment_recorded', {
     environment: 'scenario-staging',
     summary: 'Usage-alerts empty-state guard validated in scenario-staging with passing checks and documented rollback signals.',
   })
-  steps.push('deployment_recorded')
 
+  await report('meetings', 'Closing introduction and team meetings…', 90)
   let meetingsCompleted = 0
   for (const meeting of meetingDefinitions) {
     await append(runId, 'meeting_started', { meetingId: meeting.id, scheduleId: meeting.scheduleId, channelId: meeting.channelId })
@@ -404,8 +424,8 @@ export async function driveCompleteShowcaseJourney(_baseUrl: string, runId: stri
     await append(runId, 'meeting_ended', { meetingId: meeting.id, channelId: meeting.channelId })
     meetingsCompleted += 1
   }
-  steps.push('meetings_complete')
 
+  await report('calendar', 'Completing calendar and schedule blocks…', 94)
   let advancedSoFar = 0
   let scheduleCompleted = 0
   for (const item of scheduleCompletionPlan) {
@@ -421,8 +441,8 @@ export async function driveCompleteShowcaseJourney(_baseUrl: string, runId: stri
     await append(runId, 'schedule_event_completed', { scheduleId: item.id })
     scheduleCompleted += 1
   }
-  steps.push('calendar_complete')
 
+  await report('reports', 'Building task and project evidence reports…', 97)
   let events = await inMemoryEventStore.list(runId)
   if (!events.some((item) => item.type === 'project_report_created')) {
     const createdAt = new Date().toISOString()
@@ -454,7 +474,7 @@ export async function driveCompleteShowcaseJourney(_baseUrl: string, runId: stri
   if (!projectReport) throw new Error('Expected a final project report')
 
   const assessment = assessSimulation(events)
-  steps.push('feedback_ready')
+  await report('ready', 'Showcase ready — opening your workspace…', 100)
 
   return {
     runId,

@@ -50,7 +50,7 @@ export default function LandingPage() {
           <p className="landing-eyebrow"><Sparkles size={13} /> A NEW KIND OF ENGINEERING PRACTICE</p>
           <h1>Build the career<br />you can <em>prove.</em></h1>
           <p>AIWEX puts you inside a living engineering team—complete with product context, code reviews, deadlines, and the decisions that shape great work.</p>
-          <div className="landing-actions"><Link className="landing-primary" href="/sign-in">Start building evidence <ArrowRight size={17} /></Link><Link className="landing-secondary" href="/demo?onboarding=1"><Play size={13} fill="currentColor" /> Try the demo</Link><Link className="landing-secondary" href="/demo?complete=1"><BadgeCheck size={13} /> Full journey showcase</Link><a className="landing-secondary" href="#experience">See how it works</a></div>
+          <div className="landing-actions"><Link className="landing-primary" href="/sign-in">Start building evidence <ArrowRight size={17} /></Link><Link className="landing-secondary" href="/demo?onboarding=1"><Play size={13} fill="currentColor" /> Try the demo</Link><Link className="landing-secondary" href="/demo/complete"><BadgeCheck size={13} /> Full journey showcase</Link><a className="landing-secondary" href="#experience">See how it works</a></div>
           <div className="landing-trust"><span><CheckCircle2 size={14} /> Built around real work</span><span><CheckCircle2 size={14} /> Private coaching record</span></div>
         </div>
         <WorkPreview />

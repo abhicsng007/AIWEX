@@ -174,20 +174,20 @@ not copied into a real account when you later sign up.
 | --- | --- |
 | http://localhost:3000/demo?onboarding=1 | Clean start: full onboarding academy from profile through readiness |
 | http://localhost:3000/demo | Pre-qualified Day-1 access (onboarding already complete; project unlocked) |
-| http://localhost:3000/demo?complete=1 | **Full journey showcase** — finished Basic → Intermediate → Advanced run |
+| http://localhost:3000/demo/complete | **Full journey showcase** — finished Basic → Intermediate → Advanced run |
+| http://localhost:3000/demo?complete=1 | Same showcase (redirects to `/demo/complete`) |
 
-**Complete showcase** (`/demo?complete=1` or `/demo?journey=complete`):
+**Complete showcase** (`/demo/complete`, also `/demo?complete=1`):
 
-- Builds a fresh disposable run by calling the **real HTTP APIs** (not a fake
-  static snapshot): onboarding, team welcome, agent turn, workspace save,
-  scenario validation, commit/PR/review/merge, task reports, project report,
-  performance evidence, meetings, and calendar completion.
-- Lands in `/demo/workspace` with project work already delivered: all six
-  learner tasks complete, Basic/Intermediate/Advanced marked **Completed**,
-  calendar and meetings closed, issues/PRs reflecting ledger state, and
-  Feedback reports ready.
-- Takes about **30–60 seconds** on first open while server-side validation runs.
-- Also linked from the landing page as **Full journey showcase**.
+- Opens a **preparing page** with live progress (session → onboarding →
+  Basic/Intermediate/Advanced → meetings/calendar → reports).
+- Builds a disposable run on the server via `POST /api/demo/showcase`.
+- On success, opens `/demo/workspace` with all six learner tasks complete,
+  level badges, calendar/meetings closed, and Feedback reports ready.
+- On failure, returns **gracefully to the home page** with a short message
+  (never dumps raw server errors over the UI).
+- Takes about **30–60 seconds**; keep the tab open while it runs.
+- Linked from the landing page as **Full journey showcase**.
 
 ### 5. Verify with tests (optional)
 
@@ -281,7 +281,8 @@ the production host:
 | --- | --- |
 | https://aiwex.vercel.app/demo?onboarding=1 | Clean start: full onboarding academy |
 | https://aiwex.vercel.app/demo | Pre-qualified Day-1 project access |
-| https://aiwex.vercel.app/demo?complete=1 | Full Basic → Intermediate → Advanced showcase |
+| https://aiwex.vercel.app/demo/complete | Full Basic → Intermediate → Advanced showcase (with progress UI) |
+| https://aiwex.vercel.app/demo?complete=1 | Same showcase (redirects to `/demo/complete`) |
 
 Also available from the landing page:
 

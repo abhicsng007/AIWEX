@@ -50,14 +50,29 @@ describe('health and demo auth', () => {
     assert.equal(onboarding.json?.state?.phase, 'qualified')
   })
 
-  it('GET /demo?complete=1 builds a full Basic→Advanced showcase via real APIs', async (t) => {
+  it('POST /api/demo/showcase builds a full Basic→Advanced showcase with progress', async (t) => {
     if (!client) return t.skip('server unavailable')
     const demo = new ApiClient()
-    // Full journey runs real validate + report endpoints; allow a long timeout.
-    const started = await demo.get('/demo?complete=1')
+
+    // Preparing page is served at /demo/complete; the build is POST /api/demo/showcase.
+    const gate = await demo.get('/demo?complete=1')
+    assert.ok([302, 303, 307].includes(gate.status) || Boolean(gate.location))
+    assert.match(String(gate.location || ''), /\/demo\/complete/)
+
+    const started = await demo.post('/api/demo/showcase')
+    assert.equal(started.status, 200)
     assert.ok(demo.demoRunId, 'complete demo cookie')
     assert.match(demo.demoRunId, /^demo-[0-9a-f-]{36}$/i)
-    assert.ok([200, 302, 303, 307].includes(started.status) || Boolean(demo.demoRunId))
+    const frames = String(started.text || '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        try { return JSON.parse(line) } catch { return null }
+      })
+      .filter(Boolean)
+    assert.ok(frames.some((frame) => frame.done), `expected done frame in ${started.text?.slice(0, 400)}`)
+    assert.ok(!frames.some((frame) => frame.error), 'showcase should not error')
 
     const onboarding = await demo.get('/api/simulation/onboarding')
     assert.equal(onboarding.status, 200)
