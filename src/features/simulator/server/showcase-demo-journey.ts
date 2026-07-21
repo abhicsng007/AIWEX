@@ -199,7 +199,7 @@ export async function driveCompleteShowcaseJourney(
   onProgress?: (update: ShowcaseProgressUpdate) => void | Promise<void>,
 ): Promise<ShowcaseJourneySummary> {
   const steps: string[] = []
-  const report = async (phase: string, message: string, percent?: number) => {
+  const emitProgress = async (phase: string, message: string, percent?: number) => {
     steps.push(phase)
     await onProgress?.({ phase, message, percent })
   }
@@ -217,10 +217,10 @@ export async function driveCompleteShowcaseJourney(
     })
   }
 
-  await report('session', 'Creating a disposable demo session…', 4)
+  await emitProgress('session', 'Creating a disposable demo session…', 4)
 
   // --- Onboarding ---
-  await report('onboarding', 'Completing organizational onboarding…', 12)
+  await emitProgress('onboarding', 'Completing organizational onboarding…', 12)
   await append(runId, 'onboarding_started')
   await append(runId, 'onboarding_profile_confirmed', {
     employeeId: employeeProfile.employeeId,
@@ -252,10 +252,10 @@ export async function driveCompleteShowcaseJourney(
     decision: 'approved_for_project_access',
   })
   await append(runId, 'schedule_created', { startAt: nextScheduleStart(), timezone: 'UTC' })
-  await report('qualified', 'Onboarding complete — project access approved', 22)
+  await emitProgress('qualified', 'Onboarding complete — project access approved', 22)
 
   // --- Team welcome ---
-  await report('welcome', 'Running team welcome and introduction…', 28)
+  await emitProgress('welcome', 'Running team welcome and introduction…', 28)
   const welcomeChannel = 'product-usage'
   await append(runId, 'team_welcome_started', { channelId: welcomeChannel })
   for (const item of [
@@ -277,7 +277,7 @@ export async function driveCompleteShowcaseJourney(
     trigger: 'team-welcome',
   })
   await append(runId, 'team_welcome_concluded', { channelId: welcomeChannel })
-  await report('team_welcome', 'Team welcome recorded', 34)
+  await emitProgress('team_welcome', 'Team welcome recorded', 34)
 
   await append(runId, 'agent_reply', {
     agentId: 'noah',
@@ -285,7 +285,7 @@ export async function driveCompleteShowcaseJourney(
     message: 'For PROJ-184, keep restricted roles on the explanatory empty state when canManageBilling is false, and cover the legacy threshold-less workspace in checks.',
     trigger: 'showcase-agent-turn',
   })
-  await report('agent_turn', 'Recording teammate collaboration…', 38)
+  await emitProgress('agent_turn', 'Recording teammate collaboration…', 38)
 
   for (const issue of seededIssues.filter((item) => item.assignee !== 'alex' || item.status === 'done')) {
     await upsertIssue(issuePayload(issue, { status: 'done' }), 'updated')
@@ -296,7 +296,7 @@ export async function driveCompleteShowcaseJourney(
   const levels: ScenarioLevel[] = ['basic', 'intermediate', 'advanced']
   const levelPercents: Record<ScenarioLevel, number> = { basic: 48, intermediate: 62, advanced: 78 }
   for (const level of levels) {
-    await report(`level_${level}`, `Delivering ${level} scenario tasks…`, levelPercents[level] - 8)
+    await emitProgress(`level_${level}`, `Delivering ${level} scenario tasks…`, levelPercents[level] - 8)
     await append(runId, 'scenario_level_selected', { level })
     const firstTask = taskIdsForScenarioLevel[level][0]
     await append(runId, 'delivery_cycle_started', { level, taskId: firstTask, sequence: 1 })
@@ -362,8 +362,8 @@ export async function driveCompleteShowcaseJourney(
 
       let events = await inMemoryEventStore.list(runId)
       const createdAt = new Date().toISOString()
-      const report = createTaskDeliveryReport(events, { id: randomUUID(), taskId, level, createdAt })
-      await append(runId, 'task_report_created', { taskId, level, report })
+      const taskReport = createTaskDeliveryReport(events, { id: randomUUID(), taskId, level, createdAt })
+      await append(runId, 'task_report_created', { taskId, level, report: taskReport })
       events = await inMemoryEventStore.list(runId)
       const progression = deriveScenarioProgression(events)
       if (progression.nextLevel && progression.requirements.every((item) => item.complete) && !events.some((item) => item.type === 'level_unlocked' && item.metadata?.level === progression.nextLevel)) {
@@ -374,11 +374,11 @@ export async function driveCompleteShowcaseJourney(
         })
       }
       await upsertIssue(issuePayload(board.get(taskId)!, { status: 'done', assignee: 'alex' }), 'updated')
-      await report(`completed_${taskId}`, `Completed ${taskId} through the merge gate`, levelPercents[level])
+      await emitProgress(`completed_${taskId}`, `Completed ${taskId} through the merge gate`, levelPercents[level])
     }
   }
 
-  await report('performance', 'Recording performance and release evidence…', 84)
+  await emitProgress('performance', 'Recording performance and release evidence…', 84)
   await append(runId, 'load_test_recorded', {
     runId: randomUUID(),
     scenarioId: 'usage-dashboard-latency',
@@ -395,7 +395,7 @@ export async function driveCompleteShowcaseJourney(
     summary: 'Usage-alerts empty-state guard validated in scenario-staging with passing checks and documented rollback signals.',
   })
 
-  await report('meetings', 'Closing introduction and team meetings…', 90)
+  await emitProgress('meetings', 'Closing introduction and team meetings…', 90)
   let meetingsCompleted = 0
   for (const meeting of meetingDefinitions) {
     await append(runId, 'meeting_started', { meetingId: meeting.id, scheduleId: meeting.scheduleId, channelId: meeting.channelId })
@@ -425,7 +425,7 @@ export async function driveCompleteShowcaseJourney(
     meetingsCompleted += 1
   }
 
-  await report('calendar', 'Completing calendar and schedule blocks…', 94)
+  await emitProgress('calendar', 'Completing calendar and schedule blocks…', 94)
   let advancedSoFar = 0
   let scheduleCompleted = 0
   for (const item of scheduleCompletionPlan) {
@@ -442,13 +442,13 @@ export async function driveCompleteShowcaseJourney(
     scheduleCompleted += 1
   }
 
-  await report('reports', 'Building task and project evidence reports…', 97)
+  await emitProgress('reports', 'Building task and project evidence reports…', 97)
   let events = await inMemoryEventStore.list(runId)
   if (!events.some((item) => item.type === 'project_report_created')) {
     const createdAt = new Date().toISOString()
-    const report = createProjectDeliveryReport(events, { id: randomUUID(), createdAt })
-    if (report) {
-      await append(runId, 'project_report_created', { report })
+    const projectReportDoc = createProjectDeliveryReport(events, { id: randomUUID(), createdAt })
+    if (projectReportDoc) {
+      await append(runId, 'project_report_created', { report: projectReportDoc })
       events = await inMemoryEventStore.list(runId)
     }
   }
@@ -474,7 +474,7 @@ export async function driveCompleteShowcaseJourney(
   if (!projectReport) throw new Error('Expected a final project report')
 
   const assessment = assessSimulation(events)
-  await report('ready', 'Showcase ready — opening your workspace…', 100)
+  await emitProgress('ready', 'Showcase ready — opening your workspace…', 100)
 
   return {
     runId,
