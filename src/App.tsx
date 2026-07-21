@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { SimulationEvent, SimulationEventType, SimulationMetadata } from '@/features/simulator/domain/types'
 import FunctionalWorkspaceView from '@/features/simulator/components/functional-workspace-view'
 import FunctionalPullRequestsView from '@/features/simulator/components/functional-pull-requests-view'
@@ -20,6 +20,7 @@ import { scenarioWorkspaceFiles, type WorkspaceFile } from '@/features/simulator
 import type { ScheduleItem } from '@/features/simulator/domain/onboarding'
 import { meetingForSchedule } from '@/features/simulator/domain/meetings'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
+import { clearDemoClientData, clearLocalProgressForRun } from '@/features/auth/clear-demo-client-data'
 import SettingsView, { type ThemeMode } from '@/features/settings/settings-view'
 import {
   Archive, ArchiveRestore, BadgeCheck,
@@ -270,7 +271,8 @@ const initialMessages: Omit<TeamMessage, 'spaceId'>[] = [
 ]
 
 const initialSpaces: TeamSpace[] = [
-  normalizeTeamSpace({ id: 'product-usage', name: 'product-usage', unread: 3, description: 'Coordinate the product-usage initiative, handoffs, and customer-impact decisions.', memberIds: ['maya', 'noah', 'adele', 'devon', 'you'] }),
+  // Seed context is treated as already-read; unread only rises on live teammate activity.
+  normalizeTeamSpace({ id: 'product-usage', name: 'product-usage', unread: 0, description: 'Coordinate the product-usage initiative, handoffs, and customer-impact decisions.', memberIds: ['maya', 'noah', 'adele', 'devon', 'you'] }),
   normalizeTeamSpace({ id: 'engineering', name: 'engineering', unread: 0, description: 'Discuss implementation details, system health, and technical decisions.', memberIds: ['maya', 'noah', 'devon', 'you'] }),
   normalizeTeamSpace({ id: 'releases', name: 'releases', unread: 0, description: 'Coordinate launch risks, release status, and rollout decisions.', memberIds: ['maya', 'noah', 'devon', 'you'] }),
 ]
@@ -380,16 +382,58 @@ function App() {
   const advancingTimeRef = useRef(false)
   const seenSimulationEventIds = useRef(new Set<string>())
   const announcedSimulationEventIds = useRef(new Set<string>())
+  const progressHydratedForRun = useRef<string | null>(null)
+  const allowLocalProgressPersist = useRef(false)
+  const selectedSpaceIdRef = useRef(selectedSpaceId)
+  selectedSpaceIdRef.current = selectedSpaceId
 
-  useEffect(() => {
-    if (!organizationId) return
-    const saved = localStorage.getItem(`shiftline-progress:${organizationId}`)
-    if (saved) {
+  const resetClientSimulationState = () => {
+    setStandupDone(false)
+    setTestsPassed(false)
+    setCommitted(false)
+    setPrOpen(false)
+    setReviewAddressed(false)
+    setReviewReplied(false)
+    setApproved(false)
+    setMerged(false)
+    setShowCeremony(false)
+    setActivity([])
+    setWorkspaceCode(code)
+    setWorkspaceFiles(scenarioWorkspaceFiles)
+    setWorkspaceValidation(null)
+    setMessages(seedMessages)
+    setTeamSpaces(initialSpaces.map(normalizeTeamSpace))
+    setFollowUps([])
+    setSelectedSpaceId('product-usage')
+    setIssues(seededIssues)
+    setSimulationMinutes(9 * 60 + 42)
+    setReadNotificationIds([])
+    setScenarioLevel('basic')
+    setLiveEvents([])
+    setOnboardingQualified(false)
+    setCalendarSchedule([])
+    setView('onboarding')
+    seenSimulationEventIds.current = new Set()
+    announcedSimulationEventIds.current = new Set()
+  }
+
+  const hydrateLocalProgress = (runId: string) => {
+    const saved = localStorage.getItem(`shiftline-progress:${runId}`)
+    if (!saved) {
+      progressHydratedForRun.current = runId
+      allowLocalProgressPersist.current = true
+      return
+    }
+    try {
       const state = JSON.parse(saved) as { standupDone: boolean; testsPassed: boolean; committed: boolean; prOpen: boolean; reviewAddressed: boolean; reviewReplied?: boolean; approved?: boolean; merged?: boolean; activity: Array<ActivityItem | string>; workspaceCode?: string; messages?: TeamMessage[]; teamSpaces?: TeamSpace[]; followUps?: FollowUp[]; selectedSpaceId?: string; issues?: WorkIssue[]; simulationMinutes?: number; readNotificationIds?: string[]; scenarioLevel?: ScenarioLevel }
       setStandupDone(state.standupDone); setTestsPassed(state.testsPassed); setCommitted(state.committed)
       setPrOpen(state.prOpen); setReviewAddressed(state.reviewAddressed); setReviewReplied(state.reviewReplied || false); setApproved(state.approved || false); setMerged(state.merged || false); setActivity((state.activity || []).map((item, index) => typeof item === 'string' ? { id: `legacy-${index}-${item}`, text: item } : item)); setWorkspaceCode(state.workspaceCode || code); setMessages(dedupeTeamMessages(state.messages || seedMessages)); setTeamSpaces((state.teamSpaces || initialSpaces).map(normalizeTeamSpace)); setFollowUps(state.followUps || []); setSelectedSpaceId(state.selectedSpaceId || 'product-usage'); setIssues(state.issues || seededIssues); setSimulationMinutes(state.simulationMinutes || 9 * 60 + 42); setReadNotificationIds(state.readNotificationIds || []); setScenarioLevel(state.scenarioLevel || 'basic')
+    } catch {
+      clearLocalProgressForRun(runId)
     }
-  }, [organizationId])
+    progressHydratedForRun.current = runId
+    allowLocalProgressPersist.current = true
+  }
 
   useEffect(() => {
     if (!organizationId) return
@@ -409,9 +453,30 @@ function App() {
     const loadRun = async () => {
       try {
         const response = await fetch('/api/simulation/run', { cache: 'no-store' })
-        const data = await response.json() as { run?: { id?: string }; error?: string }
+        const data = await response.json() as { run?: { id?: string; isDemo?: boolean; eventCount?: number; created?: boolean }; error?: string }
         if (!response.ok || !data.run?.id) { setRunError(data.error || 'Your private simulation run could not be loaded.'); return }
-        setOrganizationId(data.run.id)
+        const runId = data.run.id
+        const isDemo = Boolean(data.run.isDemo || runId.startsWith('demo-'))
+        const eventCount = Number(data.run.eventCount || 0)
+        setIsDemoSession(isDemo)
+        allowLocalProgressPersist.current = false
+        progressHydratedForRun.current = null
+        if (!isDemo) {
+          // Drop disposable demo leftovers the moment a real account run is active.
+          clearDemoClientData()
+          if (eventCount === 0) {
+            // Brand-new signed-up accounts must not inherit any cached UI progress.
+            clearLocalProgressForRun(runId)
+            resetClientSimulationState()
+            progressHydratedForRun.current = runId
+            allowLocalProgressPersist.current = true
+          } else {
+            hydrateLocalProgress(runId)
+          }
+        } else {
+          hydrateLocalProgress(runId)
+        }
+        setOrganizationId(runId)
       } catch { setRunError('Your private simulation run could not be loaded.') }
     }
     void loadRun()
@@ -423,25 +488,28 @@ function App() {
   }, [])
 
   useEffect(() => {
-    const savedName = window.localStorage.getItem(DISPLAY_NAME_KEY)?.trim()
-    if (savedName) setLearnerProfile(profileFromDisplayName(savedName))
-  }, [])
-
-  useEffect(() => {
     const supabase = getSupabaseBrowser()
     if (!supabase) {
       setIsDemoSession(true)
+      const savedName = window.localStorage.getItem(DISPLAY_NAME_KEY)?.trim()
+      if (savedName) setLearnerProfile(profileFromDisplayName(savedName))
       return
     }
     const applyUser = (user: { email?: string | null; user_metadata?: Record<string, unknown> } | null) => {
       setAccountEmail(user?.email || null)
       setIsDemoSession(!user)
+      if (user) {
+        clearDemoClientData()
+        // Prefer the account identity after sign-up over a name typed during demo.
+        setLearnerProfile(learnerProfileFromUser(user))
+        return
+      }
       const savedName = window.localStorage.getItem(DISPLAY_NAME_KEY)?.trim()
       if (savedName) {
         setLearnerProfile(profileFromDisplayName(savedName))
         return
       }
-      setLearnerProfile(learnerProfileFromUser(user))
+      setLearnerProfile(defaultLearnerProfile)
     }
     void supabase.auth.getUser().then(({ data }) => applyUser(data.user))
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => applyUser(session?.user || null))
@@ -511,6 +579,9 @@ function App() {
 
   useEffect(() => {
     if (!organizationId) return
+    // Wait until the run has decided whether to restore or wipe progress so we
+    // never write default/demo UI state into a brand-new authenticated run.
+    if (!allowLocalProgressPersist.current || progressHydratedForRun.current !== organizationId) return
     localStorage.setItem(`shiftline-progress:${organizationId}`, JSON.stringify({ standupDone, testsPassed, committed, prOpen, reviewAddressed, reviewReplied, approved, merged, activity, workspaceCode, messages, teamSpaces, followUps, selectedSpaceId, issues, simulationMinutes, readNotificationIds, scenarioLevel }))
   }, [organizationId, standupDone, testsPassed, committed, prOpen, reviewAddressed, reviewReplied, approved, merged, activity, workspaceCode, messages, teamSpaces, followUps, selectedSpaceId, issues, simulationMinutes, readNotificationIds, scenarioLevel])
 
@@ -545,6 +616,13 @@ function App() {
         const agentId = typeof metadata.agentId === 'string' ? metadata.agentId : 'noah'
         const agent = agentPortfolios[agentId] || agentPortfolios.noah
         setMessages((items) => appendTeamMessage(items, { id: Date.parse(event.createdAt) + 1, spaceId: channelId, author: agent.name, role: agent.role, initials: agent.initials, tone: agent.tone, time: 'now', text, link: '', threadId, eventId: event.id }))
+        // Only live replies increase unread; historical ledger snapshots must not invent badges.
+        if (announce) {
+          const viewingChannel = selectedSpaceIdRef.current
+          setTeamSpaces((spaces) => spaces.map((space) => space.id === channelId
+            ? { ...space, unread: channelId === viewingChannel ? 0 : space.unread + 1 }
+            : space))
+        }
       }
       const revisionPath = typeof metadata.path === 'string' ? metadata.path : null
       const revisionContent = typeof metadata.content === 'string' ? metadata.content : null
@@ -564,7 +642,19 @@ function App() {
       if (event.type === 'pull_request_merged') setMerged(true)
       if (event.type === 'delivery_cycle_started') resetDeliveryWorkflow()
       if (event.type === 'simulation_time_advanced' && Number.isFinite(Number(metadata.to))) setSimulationMinutes(Number(metadata.to))
-      if (event.type === 'scenario_level_selected' && (metadata.level === 'basic' || metadata.level === 'intermediate' || metadata.level === 'advanced')) setScenarioLevel(metadata.level)
+      if (event.type === 'scenario_level_selected' && (metadata.level === 'basic' || metadata.level === 'intermediate' || metadata.level === 'advanced')) {
+        const level = metadata.level as ScenarioLevel
+        setScenarioLevel(level)
+        // Keep advanced-only issues on the board when replaying a completed journey.
+        setIssues((current) => {
+          const catalog = issuesForScenarioLevel(level)
+          const byId = new Map(current.map((issue) => [issue.id, issue]))
+          return catalog.map((nextIssue) => {
+            const existing = byId.get(nextIssue.id)
+            return existing ? { ...nextIssue, ...existing, id: nextIssue.id } : nextIssue
+          })
+        })
+      }
       if (event.type === 'team_space_created' && typeof metadata.spaceId === 'string' && typeof metadata.name === 'string') {
         setTeamSpaces((spaces) => spaces.some((space) => space.id === metadata.spaceId) ? spaces : [...spaces, normalizeTeamSpace({ id: metadata.spaceId as string, name: metadata.name as string, unread: 1, description: 'A focused space for decisions, updates, and working context.', memberIds: ['maya', 'noah', 'devon', 'you'] })])
       }
@@ -577,7 +667,21 @@ function App() {
       const eventIssue = metadata.issue
       if ((event.type === 'issue_created' || event.type === 'issue_updated') && eventIssue && typeof eventIssue === 'object' && typeof (eventIssue as { id?: unknown }).id === 'string') {
         const issue = eventIssue as WorkIssue
-        setIssues((items) => event.type === 'issue_created' ? items.some((item) => item.id === issue.id) ? items : [...items, issue] : items.map((item) => item.id === issue.id ? issue : item))
+        setIssues((items) => {
+          if (event.type === 'issue_created') return items.some((item) => item.id === issue.id) ? items.map((item) => item.id === issue.id ? issue : item) : [...items, issue]
+          return items.some((item) => item.id === issue.id) ? items.map((item) => item.id === issue.id ? issue : item) : [...items, issue]
+        })
+      }
+      if (event.type === 'task_completed' && typeof metadata.issueId === 'string') {
+        const issueId = metadata.issueId
+        setIssues((items) => {
+          if (items.some((item) => item.id === issueId)) {
+            return items.map((item) => item.id === issueId ? { ...item, status: 'done', updatedAt: 'Completed' } : item)
+          }
+          const level = metadata.level === 'intermediate' || metadata.level === 'advanced' ? metadata.level : 'basic'
+          const catalogIssue = issuesForScenarioLevel(level).find((item) => item.id === issueId)
+          return catalogIssue ? [...items, { ...catalogIssue, status: 'done', updatedAt: 'Completed' }] : items
+        })
       }
       const eventFollowUp = metadata.followUp
       if (event.type === 'followup_created' && eventFollowUp && typeof eventFollowUp === 'object' && typeof (eventFollowUp as { id?: unknown }).id === 'string') {
@@ -656,7 +760,19 @@ function App() {
     return () => window.clearInterval(timer)
   }, [organizationId])
 
-  const progress = useMemo(() => [standupDone, testsPassed, committed, prOpen, reviewAddressed].filter(Boolean).length, [standupDone, testsPassed, committed, prOpen, reviewAddressed])
+  /** Full current-cycle delivery gate, not a partial decorative checklist. */
+  const progressSteps = useMemo(() => [
+    { done: standupDone, label: 'Post stand-up' },
+    { done: testsPassed, label: 'Pass branch checks' },
+    { done: committed, label: 'Commit your change' },
+    { done: prOpen, label: 'Open a pull request' },
+    { done: reviewAddressed, label: 'Address review' },
+    { done: reviewReplied, label: 'Reply to review' },
+    { done: approved, label: 'Receive approval' },
+    { done: merged, label: 'Merge with rationale' },
+  ], [standupDone, testsPassed, committed, prOpen, reviewAddressed, reviewReplied, approved, merged])
+  const progress = useMemo(() => progressSteps.filter((step) => step.done).length, [progressSteps])
+  const progressTotal = progressSteps.length
   const scenarioProgression = useMemo(() => deriveScenarioProgression(liveEvents), [liveEvents])
   const selectedSpace = teamSpaces.find((space) => space.id === selectedSpaceId) || teamSpaces[0]
   const activeMessages = useMemo(() => dedupeTeamMessages(messages.filter((message) => message.spaceId === selectedSpaceId)), [messages, selectedSpaceId])
@@ -736,6 +852,30 @@ function App() {
     const currentTime = Number.isFinite(now) ? now : Date.now()
     return calendarSchedule.filter((item) => item.kind === 'ceremony' && !item.completed && !item.missed && currentTime >= Date.parse(item.startsAt) && currentTime <= Date.parse(item.endsAt)).length
   }, [calendarSchedule, calendarSimulationNow])
+  /** Open board work — not a hardcoded nav decoration. */
+  const openIssueCount = useMemo(
+    () => issues.filter((issue) => issue.status !== 'done').length,
+    [issues],
+  )
+  /** Open PRs derived from the ledger, with a live-cycle fallback before history hydrates. */
+  const openPullRequestCount = useMemo(() => {
+    const openByIssue = new Map<string, boolean>()
+    for (const event of liveEvents) {
+      const issueId = typeof event.metadata?.issueId === 'string' && event.metadata.issueId
+        ? event.metadata.issueId
+        : event.id
+      if (event.type === 'pull_request_opened') openByIssue.set(issueId, true)
+      if (event.type === 'pull_request_merged') {
+        const mergedId = typeof event.metadata?.issueId === 'string' && event.metadata.issueId
+          ? event.metadata.issueId
+          : issueId
+        openByIssue.set(mergedId, false)
+      }
+    }
+    const fromLedger = [...openByIssue.values()].filter(Boolean).length
+    if (fromLedger > 0) return fromLedger
+    return prOpen && !merged ? 1 : 0
+  }, [liveEvents, prOpen, merged])
   const activeChallenges = liveEvents.filter((event) => event.type === 'agent_reply' && typeof event.metadata?.severity === 'string').slice(-2)
   const dismissToast = (id: string) => setToasts((items) => items.filter((item) => item.id !== id))
   const notify = (message: string, tone: 'success' | 'warning' = 'success', options: ToastOptions = { title: tone === 'warning' ? 'Attention needed' : 'Simulation activity' }) => {
@@ -1068,9 +1208,9 @@ function App() {
     { id: 'home' as View, label: 'Home', icon: LayoutDashboard },
     { id: 'calendar' as View, label: 'Calendar', icon: CalendarDays, badge: scheduleNotifications.length || undefined },
     { id: 'meetings' as View, label: 'Meetings', icon: UsersRound, badge: liveMeetingCount || undefined },
-    { id: 'issues' as View, label: 'Issues', icon: CircleDot, badge: 3 },
+    { id: 'issues' as View, label: 'Issues', icon: CircleDot, badge: openIssueCount || undefined },
     { id: 'workspace' as View, label: 'Workspace', icon: Code2 },
-    { id: 'pulls' as View, label: 'Pull requests', icon: GitBranch, badge: prOpen ? 1 : undefined },
+    { id: 'pulls' as View, label: 'Pull requests', icon: GitBranch, badge: openPullRequestCount || undefined },
     { id: 'feedback' as View, label: 'Feedback', icon: Sparkles },
   ]
   const toggleTheme = () => setThemeMode(resolvedTheme === 'dark' ? 'light' : 'dark')
@@ -1086,17 +1226,20 @@ function App() {
   }
 
   const signOut = async () => {
+    const leavingDemo = isDemoSession || Boolean(organizationId?.startsWith('demo-'))
+    // httpOnly demo cookies can only be cleared by the server.
+    try { await fetch('/api/auth/end-demo', { method: 'POST', credentials: 'same-origin' }) } catch { /* continue sign-out */ }
+    if (leavingDemo) clearDemoClientData()
     const supabase = getSupabaseBrowser()
     if (supabase) {
       const { error } = await supabase.auth.signOut()
       if (error) throw error
     }
-    document.cookie = 'aiwex_demo_run=; Max-Age=0; path=/; SameSite=Lax'
-    window.location.assign(isDemoSession || organizationId?.startsWith('demo-') ? '/' : '/sign-in')
+    window.location.assign(leavingDemo ? '/' : '/sign-in')
   }
 
   const clearLocalProgress = () => {
-    if (organizationId) window.localStorage.removeItem(`shiftline-progress:${organizationId}`)
+    clearLocalProgressForRun(organizationId)
     window.location.reload()
   }
 
@@ -1129,7 +1272,7 @@ function App() {
         <div className="crumbs"><span>SignalDesk</span><ArrowRight size={13} /><b>{view === 'home' ? 'Today' : view === 'team-space' ? `# ${selectedSpace?.name}` : view === 'agent-profile' ? selectedAgent.name : view === 'settings' ? 'Settings' : nav.find((item) => item.id === view)?.label}</b></div>
         <div className="top-actions"><button className="theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}>{resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}<span>{resolvedTheme === 'dark' ? 'Light' : 'Dark'}</span></button><button className="icon-button" onClick={() => setHomeOverlay(homeOverlay === 'search' ? 'none' : 'search')} aria-label="Search organization"><Search size={18} /></button><button className="icon-button notification" onClick={() => setHomeOverlay(homeOverlay === 'notifications' ? 'none' : 'notifications')} aria-label="Open notifications"><Bell size={18} />{unreadNotifications > 0 && <i />}</button><button className="icon-button" onClick={() => setView('settings')} aria-label="Open settings" title="Settings"><Settings2 size={18} /></button><button className="help-button" onClick={() => setHomeOverlay(homeOverlay === 'help' ? 'none' : 'help')} aria-label="Open help for this page">?</button></div>
       </header>
-      {homeOverlay !== 'none' && <HomeControls overlay={homeOverlay} close={() => setHomeOverlay('none')} query={searchQuery} setQuery={setSearchQuery} issues={issues} messages={messages} activity={activity} workspaceCode={workspaceCode} prOpen={prOpen} notifications={notifications} readNotificationIds={readNotificationIds} currentView={view} selectResult={(target, spaceId, notificationId) => {
+      {homeOverlay !== 'none' && <HomeControls overlay={homeOverlay} close={() => setHomeOverlay('none')} query={searchQuery} setQuery={setSearchQuery} issues={issues} messages={messages} activity={activity} workspaceCode={workspaceCode} prOpen={prOpen} merged={merged} openPullRequestCount={openPullRequestCount} notifications={notifications} readNotificationIds={readNotificationIds} currentView={view} selectResult={(target, spaceId, notificationId) => {
         if (notificationId) setReadNotificationIds((ids) => ids.includes(notificationId) ? ids : [...ids, notificationId])
         if (isViewLocked(target)) {
           notify('Complete onboarding and pass the readiness task to unlock the main project.', 'warning')
@@ -1149,7 +1292,7 @@ function App() {
         setView('meetings')
         notify('Join the manager check-in to meet the team and introduce yourself.', 'success', { title: 'Introduction meeting', view: 'meetings' })
       }} />}
-      {view === 'home' && <HomeView learnerFirstName={learnerProfile.firstName} standupDone={standupDone} showCeremony={showCeremony} setShowCeremony={setShowCeremony} completeStandup={completeStandup} messages={activeMessages} allMessages={messages} liveEvents={liveEvents} activeChallenges={activeChallenges} scenarioLevel={scenarioLevel} scenarioProgression={scenarioProgression} selectScenarioLevel={selectScenarioLevel} selectedTeamSpace={selectedSpace} draft={draft} setDraft={setDraft} sendMessage={sendMessage} activity={activity} issues={issues} setView={setView} openAgentPortfolio={openAgentPortfolio} testsPassed={testsPassed} committed={committed} prOpen={prOpen} reviewAddressed={reviewAddressed} progress={progress} simulationMinutes={simulationMinutes} isAdvancingTime={isAdvancingTime} advanceTime={() => setHomeOverlay(homeOverlay === 'time' ? 'none' : 'time')} quickAdvance={(minutes) => void advanceSimulationTime(minutes)} collaborationConnection={collaborationConnection} collaborationLastSyncedAt={collaborationLastSyncedAt} currentIssue={issues.find((issue) => issue.id === (scenarioProgression.currentLevel === scenarioLevel ? scenarioProgression.activeTaskId : taskIdsForScenarioLevel[scenarioLevel][0])) || issues.find((issue) => issue.assignee === 'alex' && issue.status !== 'done')} />}
+      {view === 'home' && <HomeView learnerFirstName={learnerProfile.firstName} standupDone={standupDone} showCeremony={showCeremony} setShowCeremony={setShowCeremony} completeStandup={completeStandup} messages={activeMessages} allMessages={messages} liveEvents={liveEvents} activeChallenges={activeChallenges} scenarioLevel={scenarioLevel} scenarioProgression={scenarioProgression} selectScenarioLevel={selectScenarioLevel} selectedTeamSpace={selectedSpace} draft={draft} setDraft={setDraft} sendMessage={sendMessage} activity={activity} issues={issues} setView={setView} openAgentPortfolio={openAgentPortfolio} testsPassed={testsPassed} committed={committed} prOpen={prOpen} reviewAddressed={reviewAddressed} reviewReplied={reviewReplied} approved={approved} merged={merged} progress={progress} progressTotal={progressTotal} progressSteps={progressSteps} simulationMinutes={simulationMinutes} isAdvancingTime={isAdvancingTime} advanceTime={() => setHomeOverlay(homeOverlay === 'time' ? 'none' : 'time')} quickAdvance={(minutes) => void advanceSimulationTime(minutes)} collaborationConnection={collaborationConnection} collaborationLastSyncedAt={collaborationLastSyncedAt} currentIssue={issues.find((issue) => issue.id === (scenarioProgression.currentLevel === scenarioLevel ? scenarioProgression.activeTaskId : undefined)) || issues.find((issue) => issue.assignee === 'alex' && issue.status !== 'done') || [...issues].reverse().find((issue) => issue.assignee === 'alex' && issue.status === 'done') || issues.find((issue) => issue.assignee === 'alex')} />}
       {view === 'calendar' && <FunctionalCalendarView organizationId={organizationId} schedule={calendarSchedule} simulationNow={calendarSimulationNow} onScheduleUpdated={(schedule, now) => { setCalendarSchedule(schedule); setCalendarSimulationNow(now) }} onOpenMeeting={(scheduleId) => { const meeting = meetingForSchedule(scheduleId); if (!meeting) { notify('This calendar item does not use a conference room.', 'warning'); return }; setSelectedMeetingId(meeting.id); setView('meetings') }} />}
       {view === 'meetings' && <FunctionalMeetingView organizationId={organizationId} selectedMeetingId={selectedMeetingId} onMeetingSelected={setSelectedMeetingId} autoStart={autoStartIntroMeeting} onAutoStarted={() => setAutoStartIntroMeeting(false)} />}
       {view === 'team-space' && <TeamSpaceView space={selectedSpace} messages={activeMessages} allMessages={messages} followUps={followUps} draft={draft} setDraft={setDraft} sendMessage={sendMessage} sendThreadReply={(message, threadId) => sendMessage(undefined, message, threadId)} updateSpace={updateTeamSpace} updateMessage={updateMessage} deleteMessage={deleteMessage} togglePinMessage={togglePinMessage} markMessage={markMessage} createFollowUp={createFollowUp} completeFollowUp={completeFollowUp} resolveThread={resolveThread} archiveSpace={archiveTeamSpace} unarchiveSpace={unarchiveTeamSpace} learnerName={learnerProfile.displayName} openAgentPortfolio={openAgentPortfolio} />}
@@ -1158,7 +1301,7 @@ function App() {
       {view === 'workspace' && (workspaceSurface === 'theia'
         ? <FunctionalTheiaWorkspaceView organizationId={organizationId} onReturn={() => setWorkspaceSurface('built-in')} onFileSynchronized={synchronizeTheiaFile} />
         : <FunctionalWorkspaceView files={workspaceFiles} updateFile={updateWorkspaceFile} saveFile={saveWorkspaceFile} testsPassed={testsPassed && Boolean(workspaceValidation)} committed={committed} testOutput={workspaceValidation?.output} testDurationMs={workspaceValidation?.durationMs} runTests={runTests} commit={commit} openPr={openPr} openTheia={() => setWorkspaceSurface('theia')} />)}
-      {view === 'pulls' && <FunctionalPullRequestsView prOpen={prOpen} reviewAddressed={reviewAddressed} reviewReplied={reviewReplied} approved={approved} merged={merged} files={workspaceFiles} addressReview={addressReview} replyToReview={replyToReview} mergePullRequest={mergePullRequest} />}
+      {view === 'pulls' && <FunctionalPullRequestsView organizationId={organizationId} prOpen={prOpen} reviewAddressed={reviewAddressed} reviewReplied={reviewReplied} approved={approved} merged={merged} files={workspaceFiles} liveEvents={liveEvents} addressReview={addressReview} replyToReview={replyToReview} mergePullRequest={mergePullRequest} />}
       {view === 'feedback' && <FunctionalFeedbackView organizationId={organizationId} />}
       {view === 'settings' && (
         <SettingsView
@@ -1193,7 +1336,7 @@ function formatSimulationAdvance(minutes: number) {
   return remainder ? `${hours}h ${remainder}m` : `${hours}h`
 }
 
-function HomeControls({ overlay, close, query, setQuery, issues, messages, activity, workspaceCode, prOpen, notifications, readNotificationIds, currentView, selectResult, markAllNotificationsRead, simulationMinutes, isAdvancingTime, advanceTime }: { overlay: HomeOverlay; close: () => void; query: string; setQuery: (value: string) => void; issues: WorkIssue[]; messages: TeamMessage[]; activity: ActivityItem[]; workspaceCode: string; prOpen: boolean; notifications: NotificationItem[]; readNotificationIds: string[]; currentView: View; selectResult: (view: View, spaceId?: string, notificationId?: string) => void; markAllNotificationsRead: () => void; simulationMinutes: number; isAdvancingTime: boolean; advanceTime: (minutes: number) => void }) {
+function HomeControls({ overlay, close, query, setQuery, issues, messages, activity, workspaceCode, prOpen, merged, openPullRequestCount, notifications, readNotificationIds, currentView, selectResult, markAllNotificationsRead, simulationMinutes, isAdvancingTime, advanceTime }: { overlay: HomeOverlay; close: () => void; query: string; setQuery: (value: string) => void; issues: WorkIssue[]; messages: TeamMessage[]; activity: ActivityItem[]; workspaceCode: string; prOpen: boolean; merged: boolean; openPullRequestCount: number; notifications: NotificationItem[]; readNotificationIds: string[]; currentView: View; selectResult: (view: View, spaceId?: string, notificationId?: string) => void; markAllNotificationsRead: () => void; simulationMinutes: number; isAdvancingTime: boolean; advanceTime: (minutes: number) => void }) {
   const normalizedQuery = query.trim().toLowerCase()
   const issueResults = normalizedQuery ? issues.filter((issue) => `${issue.id} ${issue.title} ${issue.description}`.toLowerCase().includes(normalizedQuery)).slice(0, 4) : []
   const messageResults = normalizedQuery ? messages.filter((message) => `${message.author} ${message.text}`.toLowerCase().includes(normalizedQuery)).slice(0, 4) : []
@@ -1211,42 +1354,250 @@ function HomeControls({ overlay, close, query, setQuery, issues, messages, activ
       {overlay === 'search' && normalizedQuery && (pullResults.length > 0 || workspaceResults.length > 0 || activityResults.length > 0) && <div className="search-results extended-search-results">{pullResults.map((result) => <button key={result.id} onClick={() => selectResult('pulls')}><GitBranch size={15} /><span><b>{result.title}</b><small>{result.detail}</small></span></button>)}{workspaceResults.map((result) => <button key={result.id} onClick={() => selectResult('workspace')}><Code2 size={15} /><span><b>{result.title}</b><small>{result.detail}</small></span></button>)}{activityResults.map((item) => <button key={item.id} onClick={() => selectResult('feedback')}><Check size={15} /><span><b>Simulation activity</b><small>{item.text}</small></span></button>)}</div>}
       {overlay === 'notifications' && <><div className="notification-title"><div><span className="eyebrow">ACTION REQUIRED</span><h2>Notifications</h2></div><button className="ghost-button" onClick={markAllNotificationsRead}>Mark all read</button></div><div className="notification-list">{notifications.length ? notifications.map((notification) => { const Icon = notificationIcon(notification); return <button key={notification.id} className={`${readNotificationIds.includes(notification.id) ? 'notification-read' : ''} ${notification.tone === 'warning' ? 'notification-warning' : notification.kind === 'action' || notification.kind === 'schedule' ? 'notification-action' : ''}`} onClick={() => selectResult(notification.view, notification.spaceId, notification.id)}><Icon size={16} /><span><b>{notification.title}</b><small>{notification.detail}</small></span><ArrowRight size={14} /></button> }) : <p>You are caught up. New scenario events will appear here.</p>}</div></>}
       {overlay === 'help' && <><span className="eyebrow">CONTEXTUAL HELP</span><h2>{help.title}</h2><ol className="guide-list">{help.steps.map((step) => <li key={step}>{step}</li>)}</ol><button className="primary-button" onClick={() => selectResult(help.target)}>{help.label} <ArrowRight size={15} /></button></>}
-      {overlay === 'organization' && <><span className="eyebrow">CURRENT ORGANIZATION</span><h2>SignalDesk</h2><p>Pro workspace · Curated B2B SaaS scenario · Sprint 2 of 3</p><div className="org-overview"><span><UsersRound size={16} /> 6 AI teammates</span><span><CircleDot size={16} /> {issues.filter((issue) => issue.status !== 'done').length} active issues</span><span><GitBranch size={16} /> {prOpen ? '1 learner PR in progress' : 'No learner PR yet'}</span></div><button className="primary-button" onClick={() => selectResult('home')}>Open today’s work <ArrowRight size={15} /></button></>}
+      {overlay === 'organization' && <><span className="eyebrow">CURRENT ORGANIZATION</span><h2>SignalDesk</h2><p>Pro workspace · Curated B2B SaaS scenario · Sprint 2 of 3</p><div className="org-overview"><span><UsersRound size={16} /> 6 AI teammates</span><span><CircleDot size={16} /> {issues.filter((issue) => issue.status !== 'done').length} active issues</span><span><GitBranch size={16} /> {openPullRequestCount > 0 ? `${openPullRequestCount} open pull request${openPullRequestCount === 1 ? '' : 's'}` : prOpen && merged ? 'Latest learner PR merged' : 'No open pull requests'}</span></div><button className="primary-button" onClick={() => selectResult('home')}>Open today’s work <ArrowRight size={15} /></button></>}
     </section>
   </div>
 }
 
 function ScenarioLevelPanel({ level, progression, selectLevel, challenges }: { level: ScenarioLevel; progression: ScenarioProgression; selectLevel: (level: ScenarioLevel) => void; challenges: SimulationEvent[] }) {
   const activePolicy = scenarioPolicies[level]
-  return <section className="scenario-level-panel"><div className="scenario-level-head"><div><span className="eyebrow">SIMULATION DIFFICULTY</span><h2>{activePolicy.label} workplace scenario</h2><p>{activePolicy.summary}</p></div><div className="scenario-policy"><b>{activePolicy.activeTaskTarget} active learner task{activePolicy.activeTaskTarget > 1 ? 's' : ''}</b><span>{activePolicy.deadlineLabel} · {activePolicy.agentStyle}</span></div></div><div className="level-options">{(Object.keys(scenarioPolicies) as ScenarioLevel[]).map((item) => { const locked = item !== level && !progression.unlockedLevels.includes(item); return <button key={item} disabled={locked} className={`${level === item ? 'selected-level' : ''} ${locked ? 'locked-level' : ''}`} onClick={() => selectLevel(item)}><b>{scenarioPolicies[item].label}{locked ? ' · locked' : ''}</b><small>{scenarioPolicies[item].activeTaskTarget} task{scenarioPolicies[item].activeTaskTarget > 1 ? 's' : ''} · {scenarioPolicies[item].agentStyle}</small></button>})}</div>{progression.nextLevel && <div className="level-requirements"><b>Unlock {scenarioPolicies[progression.nextLevel].label}</b><span>Coaching readiness: {progression.overallScore}</span>{progression.requirements.map((requirement) => <div key={requirement.label} className={requirement.complete ? 'complete' : ''}><Check size={13} /> {requirement.label}</div>)}</div>}{challenges.length > 0 && <div className="scenario-challenges">{challenges.map((event) => <div className={`scenario-challenge ${String(event.metadata?.severity || 'info')}`} key={event.id}><Bot size={16} /><div><b>{String(event.metadata?.title || 'Scenario update')}</b><span>{String(event.metadata?.message || '')}</span></div></div>)}</div>}</section>
+  const completedSet = new Set(progression.completedLevels)
+  return (
+    <section className="scenario-level-panel">
+      <div className="scenario-level-head">
+        <div>
+          <span className="eyebrow">SIMULATION DIFFICULTY</span>
+          <h2>{activePolicy.label} workplace scenario</h2>
+          <p>{activePolicy.summary}</p>
+        </div>
+        <div className="scenario-policy">
+          <b>{activePolicy.activeTaskTarget} active learner task{activePolicy.activeTaskTarget > 1 ? 's' : ''}</b>
+          <span>{activePolicy.deadlineLabel} · {activePolicy.agentStyle}</span>
+        </div>
+      </div>
+      <div className="level-options" role="tablist" aria-label="Scenario difficulty">
+        {(Object.keys(scenarioPolicies) as ScenarioLevel[]).map((item) => {
+          const locked = item !== level && !progression.unlockedLevels.includes(item)
+          const completed = completedSet.has(item)
+          const selected = level === item
+          const taskCount = scenarioPolicies[item].activeTaskTarget
+          return (
+            <button
+              key={item}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              disabled={locked}
+              className={`${selected ? 'selected-level' : ''} ${locked ? 'locked-level' : ''} ${completed ? 'completed-level' : ''}`}
+              onClick={() => selectLevel(item)}
+            >
+              <span className="level-option-top">
+                <b>{scenarioPolicies[item].label}</b>
+                {completed ? (
+                  <span className="level-complete-badge" title={`${scenarioPolicies[item].label} delivery tasks complete`}>
+                    <Check size={12} /> Completed
+                  </span>
+                ) : locked ? (
+                  <span className="level-locked-badge">Locked</span>
+                ) : selected ? (
+                  <span className="level-active-badge">Active</span>
+                ) : null}
+              </span>
+              <small>
+                {completed
+                  ? `${taskCount}/${taskCount} tasks delivered`
+                  : locked
+                    ? 'Complete the previous level first'
+                    : `${taskCount} task${taskCount > 1 ? 's' : ''} · ${scenarioPolicies[item].agentStyle}`}
+              </small>
+            </button>
+          )
+        })}
+      </div>
+      {progression.nextLevel && !completedSet.has(level) && (
+        <div className="level-requirements">
+          <b>Unlock {scenarioPolicies[progression.nextLevel].label}</b>
+          <span>Coaching readiness: {progression.overallScore}</span>
+          {progression.requirements.map((requirement) => (
+            <div key={requirement.label} className={requirement.complete ? 'complete' : ''}>
+              <Check size={13} /> {requirement.label}
+            </div>
+          ))}
+        </div>
+      )}
+      {completedSet.has('advanced') && (
+        <div className="level-requirements complete-all">
+          <b>All scenario levels complete</b>
+          <span>Basic, Intermediate, and Advanced delivery paths are finished. Open Feedback for the project report.</span>
+        </div>
+      )}
+      {challenges.length > 0 && (
+        <div className="scenario-challenges">
+          {challenges.map((event) => (
+            <div className={`scenario-challenge ${String(event.metadata?.severity || 'info')}`} key={event.id}>
+              <Bot size={16} />
+              <div>
+                <b>{String(event.metadata?.title || 'Scenario update')}</b>
+                <span>{String(event.metadata?.message || '')}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
 }
 
-function HomeView(props: { learnerFirstName: string; standupDone: boolean; showCeremony: boolean; setShowCeremony: (v: boolean) => void; completeStandup: () => void; messages: TeamMessage[]; allMessages: TeamMessage[]; liveEvents: SimulationEvent[]; activeChallenges: SimulationEvent[]; scenarioLevel: ScenarioLevel; scenarioProgression: ScenarioProgression; selectScenarioLevel: (level: ScenarioLevel) => void; selectedTeamSpace: TeamSpace; draft: string; setDraft: (v: string) => void; sendMessage: (attachment?: TeamAttachment) => void; activity: ActivityItem[]; issues: WorkIssue[]; setView: (v: View) => void; openAgentPortfolio: (id: string) => void; testsPassed: boolean; committed: boolean; prOpen: boolean; reviewAddressed: boolean; progress: number; simulationMinutes: number; isAdvancingTime: boolean; advanceTime: () => void; quickAdvance: (minutes: number) => void; collaborationConnection: CollaborationConnectionState; collaborationLastSyncedAt: string | null; currentIssue?: WorkIssue }) {
-  const { learnerFirstName, standupDone, showCeremony, setShowCeremony, completeStandup, messages, allMessages, liveEvents, activeChallenges, scenarioLevel, scenarioProgression, selectScenarioLevel, selectedTeamSpace, draft, setDraft, sendMessage, activity, issues, setView, openAgentPortfolio, testsPassed, committed, prOpen, reviewAddressed, progress, simulationMinutes, isAdvancingTime, advanceTime, quickAdvance, collaborationConnection, collaborationLastSyncedAt, currentIssue } = props
-  const task = currentIssue || seededIssues[0]
+function homeActivityFromEvents(events: SimulationEvent[]): Array<{ id: string; icon: 'git' | 'issue' | 'bot' | 'you' | 'check'; title: ReactNode; detail: string; createdAt: string }> {
+  const rows: Array<{ id: string; icon: 'git' | 'issue' | 'bot' | 'you' | 'check'; title: ReactNode; detail: string; createdAt: string; rank: number }> = []
+  for (const event of events) {
+    const meta = event.metadata || {}
+    if (event.type === 'pull_request_merged') {
+      rows.push({ id: event.id, icon: 'git', title: <><b>You</b> merged {String(meta.issueId || 'a pull request')}</>, detail: 'Pull request merged into main', createdAt: event.createdAt, rank: 1 })
+    } else if (event.type === 'pull_request_opened') {
+      rows.push({ id: event.id, icon: 'git', title: <><b>You</b> opened {String(meta.title || meta.issueId || 'a pull request')}</>, detail: 'Awaiting review', createdAt: event.createdAt, rank: 2 })
+    } else if (event.type === 'task_completed') {
+      rows.push({ id: event.id, icon: 'check', title: <><b>You</b> completed {String(meta.issueId || 'a task')}</>, detail: `${String(meta.level || 'scenario')} delivery gate cleared`, createdAt: event.createdAt, rank: 1 })
+    } else if (event.type === 'task_report_created') {
+      rows.push({ id: event.id, icon: 'check', title: <><b>System</b> created a task evidence report</>, detail: String(meta.taskId || 'Delivery report ready'), createdAt: event.createdAt, rank: 2 })
+    } else if (event.type === 'agent_reply' && typeof meta.message === 'string') {
+      const agentId = String(meta.agentId || 'noah')
+      const agent = agentPortfolios[agentId] || agentPortfolios.noah
+      rows.push({ id: event.id, icon: 'bot', title: <><b>{agent.name.split(' ')[0]}</b> replied in #{String(meta.channelId || 'team')}</>, detail: meta.message.slice(0, 90), createdAt: event.createdAt, rank: 3 })
+    } else if (event.type === 'issue_updated' && meta.status === 'done') {
+      rows.push({ id: event.id, icon: 'issue', title: <><b>Board</b> marked {String(meta.issueId || 'issue')} done</>, detail: 'Issue status updated', createdAt: event.createdAt, rank: 3 })
+    } else if (event.type === 'standup_posted') {
+      rows.push({ id: event.id, icon: 'you', title: <><b>You</b> posted stand-up</>, detail: shortEventText(meta.text, 'Plan made visible to the team'), createdAt: event.createdAt, rank: 2 })
+    } else if (event.type === 'checks_passed') {
+      rows.push({ id: event.id, icon: 'check', title: <><b>CI</b> passed scenario checks</>, detail: 'Server-verified validation recorded', createdAt: event.createdAt, rank: 2 })
+    } else if (event.type === 'meeting_ended') {
+      rows.push({ id: event.id, icon: 'bot', title: <><b>Team</b> closed a meeting</>, detail: String(meta.meetingId || 'Ceremony complete'), createdAt: event.createdAt, rank: 3 })
+    } else if (event.type === 'schedule_event_completed') {
+      rows.push({ id: event.id, icon: 'check', title: <><b>Calendar</b> marked a block complete</>, detail: String(meta.scheduleId || 'Schedule item'), createdAt: event.createdAt, rank: 4 })
+    }
+  }
+  return rows
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || a.rank - b.rank)
+    .slice(0, 8)
+    .map(({ rank: _rank, ...row }) => row)
+}
+
+function HomeView(props: {
+  learnerFirstName: string
+  standupDone: boolean
+  showCeremony: boolean
+  setShowCeremony: (v: boolean) => void
+  completeStandup: () => void
+  messages: TeamMessage[]
+  allMessages: TeamMessage[]
+  liveEvents: SimulationEvent[]
+  activeChallenges: SimulationEvent[]
+  scenarioLevel: ScenarioLevel
+  scenarioProgression: ScenarioProgression
+  selectScenarioLevel: (level: ScenarioLevel) => void
+  selectedTeamSpace: TeamSpace
+  draft: string
+  setDraft: (v: string) => void
+  sendMessage: (attachment?: TeamAttachment) => void
+  activity: ActivityItem[]
+  issues: WorkIssue[]
+  setView: (v: View) => void
+  openAgentPortfolio: (id: string) => void
+  testsPassed: boolean
+  committed: boolean
+  prOpen: boolean
+  reviewAddressed: boolean
+  reviewReplied: boolean
+  approved: boolean
+  merged: boolean
+  progress: number
+  progressTotal: number
+  progressSteps: Array<{ done: boolean; label: string }>
+  simulationMinutes: number
+  isAdvancingTime: boolean
+  advanceTime: () => void
+  quickAdvance: (minutes: number) => void
+  collaborationConnection: CollaborationConnectionState
+  collaborationLastSyncedAt: string | null
+  currentIssue?: WorkIssue
+}) {
+  const {
+    learnerFirstName, standupDone, showCeremony, setShowCeremony, completeStandup, messages, allMessages, liveEvents,
+    activeChallenges, scenarioLevel, scenarioProgression, selectScenarioLevel, selectedTeamSpace, draft, setDraft,
+    sendMessage, activity, issues, setView, openAgentPortfolio, testsPassed, committed, prOpen, reviewAddressed,
+    reviewReplied, approved, merged, progress, progressTotal, progressSteps, simulationMinutes, isAdvancingTime,
+    advanceTime, quickAdvance, collaborationConnection, collaborationLastSyncedAt, currentIssue,
+  } = props
+  const task = currentIssue || issues.find((issue) => issue.assignee === 'alex') || seededIssues[0]
   const nextCheckpoint = nextSimulationCheckpoint(simulationMinutes)
   const nextAdvance = nextCheckpoint ? nextCheckpoint.at - simulationMinutes : 0
-  const nextStep = !standupDone
-    ? { title: 'Post your stand-up', detail: 'Make today’s work and any dependency risks visible to the team.', label: 'Post update', action: () => setShowCeremony(true) }
-    : !testsPassed
-      ? { title: 'Implement the role guard', detail: 'Use the canManageBilling guard, then run the branch checks.', label: 'Open workspace', action: () => setView('workspace') }
-      : !committed
-        ? { title: 'Commit the verified change', detail: 'Capture the tested implementation on your feature branch.', label: 'Open workspace', action: () => setView('workspace') }
-        : !prOpen
-          ? { title: 'Request a review', detail: 'Open a pull request so your teammates can inspect the change.', label: 'Open pull requests', action: () => setView('pulls') }
-          : !reviewAddressed
-            ? { title: 'Address the review', detail: 'Resolve the requested change and explain the decision to Noah.', label: 'Open review', action: () => setView('pulls') }
-            : { title: 'Keep the release moving', detail: 'Reply to the review, record the rationale, and complete the merge gate.', label: 'Open review', action: () => setView('pulls') }
+  const projectComplete = liveEvents.some((event) => event.type === 'project_report_created')
+    || (scenarioProgression.currentLevel === 'advanced' && scenarioProgression.pendingTaskIds.length === 0 && liveEvents.some((event) => event.type === 'task_completed'))
+  const nextStep = projectComplete
+    ? { title: 'Review your evidence pack', detail: 'Task and project reports are ready in Feedback.', label: 'Open feedback', action: () => setView('feedback') }
+    : !standupDone
+      ? { title: 'Post your stand-up', detail: 'Make today’s work and any dependency risks visible to the team.', label: 'Post update', action: () => setShowCeremony(true) }
+      : !testsPassed
+        ? { title: 'Implement the role guard', detail: 'Use the canManageBilling guard, then run the branch checks.', label: 'Open workspace', action: () => setView('workspace') }
+        : !committed
+          ? { title: 'Commit the verified change', detail: 'Capture the tested implementation on your feature branch.', label: 'Open workspace', action: () => setView('workspace') }
+          : !prOpen
+            ? { title: 'Request a review', detail: 'Open a pull request so your teammates can inspect the change.', label: 'Open pull requests', action: () => setView('pulls') }
+            : !reviewAddressed
+              ? { title: 'Address the review', detail: 'Resolve the requested change and explain the decision to Noah.', label: 'Open review', action: () => setView('pulls') }
+              : !reviewReplied
+                ? { title: 'Reply to the review', detail: 'Explain validation so approval can proceed.', label: 'Open review', action: () => setView('pulls') }
+                : !approved
+                  ? { title: 'Wait for approval', detail: 'Your response is recorded. Approval unlocks the merge rationale.', label: 'Open pull requests', action: () => setView('pulls') }
+                  : !merged
+                    ? { title: 'Merge with rationale', detail: 'Record why the change is safe, then merge.', label: 'Open pull requests', action: () => setView('pulls') }
+                    : { title: 'Mark the task complete', detail: 'Close the issue so progression can unlock the next assignment.', label: 'Open issues', action: () => setView('issues') }
+  const ledgerActivity = homeActivityFromEvents(liveEvents)
+  const activityIcon = (icon: 'git' | 'issue' | 'bot' | 'you' | 'check') => {
+    if (icon === 'git') return <span className="activity-icon mint"><GitBranch size={15} /></span>
+    if (icon === 'issue') return <span className="activity-icon orange"><CircleDot size={15} /></span>
+    if (icon === 'bot') return <span className="activity-icon lavender"><Bot size={15} /></span>
+    if (icon === 'you') return <span className="activity-icon blue"><UsersRound size={15} /></span>
+    return <span className="activity-icon blue"><Check size={15} /></span>
+  }
+  const collabPill = merged
+    ? 'MERGED'
+    : prOpen
+      ? reviewAddressed
+        ? reviewReplied
+          ? approved
+            ? 'APPROVED'
+            : 'RESPONSE SENT'
+          : 'REVIEW IN PROGRESS'
+        : 'WAITING ON YOU'
+      : 'COLLABORATION'
+  const collabTitle = merged
+    ? 'Latest PR is merged'
+    : prOpen
+      ? reviewAddressed
+        ? reviewReplied
+          ? approved
+            ? 'Record merge rationale'
+            : 'Waiting on approval'
+          : 'Explain your review update'
+        : 'Reply to Noah’s review'
+      : 'Clarify the API edge case'
+  const collabDetail = merged
+    ? 'Delivery gate cleared for the active cycle'
+    : prOpen
+      ? 'Required review step'
+      : 'Ask Noah before implementation'
+
   return <div className="page home-page">
     <section className="simulation-clock-card" aria-label="Simulation time controls" aria-busy={isAdvancingTime}><div className="simulation-clock-summary"><span className="eyebrow">LEARNER-CONTROLLED PACE</span><div><Clock3 size={19} /><b>{formatSimulationTime(simulationMinutes)}</b><span>Simulated time</span></div><p>{nextCheckpoint ? `${nextCheckpoint.title} is next. ${nextCheckpoint.detail}` : 'Today’s planned scenario triggers are complete. Continue with your project work or adjust the clock.'}</p></div><div className="simulation-time-actions">{nextCheckpoint && <button className="next-event-button" type="button" disabled={isAdvancingTime} onClick={() => quickAdvance(nextAdvance)}><FastForward size={16} /><span><b>{isAdvancingTime ? 'Advancing…' : 'Next event'}</b><small>{nextCheckpoint.title} · in {formatSimulationAdvance(nextAdvance)}</small></span></button>}<button className="time-increment-button" type="button" disabled={isAdvancingTime} onClick={() => quickAdvance(15)}>+15m</button><button className="time-increment-button" type="button" disabled={isAdvancingTime} onClick={() => quickAdvance(60)}>+1h</button><button className="time-adjust-button" type="button" disabled={isAdvancingTime} onClick={advanceTime}>More</button></div></section>
-    <section className="welcome"><div><p className="eyebrow">WEDNESDAY, SEPTEMBER 18 · SPRINT 2 OF 3</p><h1>Good morning, {learnerFirstName} <span>✦</span></h1><p>Here’s what needs your attention in SignalDesk today.</p></div><button className="time-button" onClick={advanceTime}><Clock3 size={16} /> Simulated time <b>{formatSimulationTime(simulationMinutes)}</b><ChevronDown size={14} /></button></section>
+    <section className="welcome"><div><p className="eyebrow">SIGNALDESK · {scenarioLevel.toUpperCase()} SCENARIO</p><h1>Good morning, {learnerFirstName} <span>✦</span></h1><p>Here’s what needs your attention in SignalDesk today.</p></div><button className="time-button" onClick={advanceTime}><Clock3 size={16} /> Simulated time <b>{formatSimulationTime(simulationMinutes)}</b><ChevronDown size={14} /></button></section>
     <ScenarioLevelPanel level={scenarioLevel} progression={scenarioProgression} selectLevel={selectScenarioLevel} challenges={activeChallenges} />
     <section className="priority-grid">
-      <div className="ceremony-card"><div className="card-icon lavender"><UsersRound size={19} /></div><div><span className="pill lavender-pill">CEREMONY</span><h3>Async stand-up is due</h3><p>Share your plan and flag any blockers with the team.</p></div><button className={standupDone ? 'complete-button done' : 'complete-button'} onClick={() => setShowCeremony(!showCeremony)}>{standupDone ? <><Check size={16} /> Posted</> : <>Post update <ArrowRight size={15} /></>}</button>
+      <div className="ceremony-card"><div className="card-icon lavender"><UsersRound size={19} /></div><div><span className="pill lavender-pill">CEREMONY</span><h3>{standupDone ? 'Stand-up posted' : 'Async stand-up is due'}</h3><p>{standupDone ? 'Your plan is visible to the team for this delivery cycle.' : 'Share your plan and flag any blockers with the team.'}</p></div><button className={standupDone ? 'complete-button done' : 'complete-button'} onClick={() => setShowCeremony(!showCeremony)}>{standupDone ? <><Check size={16} /> Posted</> : <>Post update <ArrowRight size={15} /></>}</button>
         {showCeremony && !standupDone && <div className="standup-popover"><b>Today’s stand-up</b><p>What did you finish? What will you work on? Any blockers?</p><button onClick={completeStandup}>Post my update</button></div>}
       </div>
-      <div className="priority-card"><div className="card-icon coral"><Bell size={19} /></div><div><span className="pill coral-pill">{task.priority.toUpperCase()} PRIORITY</span><h3>{task.title}</h3><p>{task.id} · {task.status === 'done' ? 'Completed' : task.status === 'blocked' ? 'Blocked' : 'Due tomorrow'}</p></div><button className="soft-icon" onClick={() => setView('issues')} aria-label={`Open ${task.id}`}><ArrowRight size={18} /></button></div>
-      <div className="priority-card"><div className="card-icon sky"><MessageSquare size={19} /></div><div><span className="pill sky-pill">{prOpen ? reviewAddressed ? 'REVIEW IN PROGRESS' : 'WAITING ON YOU' : 'COLLABORATION'}</span><h3>{prOpen ? reviewAddressed ? 'Explain your review update' : 'Reply to Noah’s review' : 'Clarify the API edge case'}</h3><p>{prOpen ? 'PR #482 · Required review step' : 'Ask Noah before implementation'}</p></div><button className="soft-icon" onClick={() => setView(prOpen ? 'pulls' : 'team-space')} aria-label="Open collaboration task"><ArrowRight size={18} /></button></div>
+      <div className="priority-card"><div className="card-icon coral"><Bell size={19} /></div><div><span className="pill coral-pill">{task.priority.toUpperCase()} PRIORITY</span><h3>{task.title}</h3><p>{task.id} · {task.status === 'done' ? 'Completed' : task.status === 'blocked' ? 'Blocked' : task.status === 'in_review' ? 'In review' : task.status === 'in_progress' ? 'In progress' : 'To do'}</p></div><button className="soft-icon" onClick={() => setView('issues')} aria-label={`Open ${task.id}`}><ArrowRight size={18} /></button></div>
+      <div className="priority-card"><div className="card-icon sky"><MessageSquare size={19} /></div><div><span className="pill sky-pill">{collabPill}</span><h3>{collabTitle}</h3><p>{collabDetail}</p></div><button className="soft-icon" onClick={() => setView(prOpen || merged ? 'pulls' : 'team-space')} aria-label="Open collaboration task"><ArrowRight size={18} /></button></div>
     </section>
     <div className="content-grid">
       <section className="card task-card"><div className="section-head"><div><span className="eyebrow">YOUR FOCUS</span><h2>Current task</h2></div><button className="ghost-button" onClick={() => setView('issues')}>View issue <ArrowRight size={14} /></button></div>
@@ -1255,21 +1606,21 @@ function HomeView(props: { learnerFirstName: string; standupDone: boolean; showC
         <div className="task-details"><div><small>ASSIGNED BY</small><span><Avatar id="maya" tone="violet" small /> Maya Chen</span></div><div><small>DEPENDENCY</small><span className="dependency"><Lock size={13} /> {task.dependencyIds.length ? task.dependencyIds.join(', ') : 'No blockers'}</span></div><div><small>ESTIMATE</small><span>{task.estimate} points</span></div></div>
         <div className="next-action"><Sparkles size={17} /><div><b>{nextStep.title}</b><span>{nextStep.detail}</span></div><button onClick={nextStep.action}>{nextStep.label}</button></div>
       </section>
-      <section className="card progress-card"><div className="section-head"><div><span className="eyebrow">SIMULATION PROGRESS</span><h2>Sprint readiness</h2></div><span className="progress-score">{progress}/5</span></div>
-        <div className="progress-track"><i style={{ width: `${progress * 20}%` }} /></div>
-        {[
-          [standupDone, 'Post stand-up'], [testsPassed, 'Pass branch checks'], [committed, 'Commit your change'], [prOpen, 'Open a pull request'], [reviewAddressed, 'Address review'],
-        ].map(([done, label]) => <div className="check-row" key={String(label)}><span className={done ? 'checked' : ''}>{done ? <Check size={13} /> : ''}</span>{label}</div>)}
+      <section className="card progress-card"><div className="section-head"><div><span className="eyebrow">SIMULATION PROGRESS</span><h2>Delivery gate</h2></div><span className="progress-score">{progress}/{progressTotal}</span></div>
+        <div className="progress-track"><i style={{ width: `${progressTotal ? (progress / progressTotal) * 100 : 0}%` }} /></div>
+        {progressSteps.map((step) => <div className="check-row" key={step.label}><span className={step.done ? 'checked' : ''}>{step.done ? <Check size={13} /> : ''}</span>{step.label}</div>)}
       </section>
     </div>
-    <OrgActivityMap issues={issues} messages={allMessages} liveEvents={liveEvents} simulationMinutes={simulationMinutes} standupDone={standupDone} testsPassed={testsPassed} committed={committed} prOpen={prOpen} reviewAddressed={reviewAddressed} connectionState={collaborationConnection} lastSyncedAt={collaborationLastSyncedAt} setView={setView} />
+    <OrgActivityMap issues={issues} messages={allMessages} liveEvents={liveEvents} simulationMinutes={simulationMinutes} standupDone={standupDone} testsPassed={testsPassed} committed={committed} prOpen={prOpen} reviewAddressed={reviewAddressed} reviewReplied={reviewReplied} approved={approved} merged={merged} connectionState={collaborationConnection} lastSyncedAt={collaborationLastSyncedAt} setView={setView} />
     <div className="content-grid lower-grid">
       <section className="card conversation-card"><div className="section-head"><div><span className="eyebrow">TEAM CONVERSATION</span><h2><span className="hash">#</span> {selectedTeamSpace.name} {selectedTeamSpace.unread > 0 && <em>{selectedTeamSpace.unread} unread</em>}</h2></div><button className="ghost-button" onClick={() => setView('team-space')}>Open channel <ArrowRight size={14} /></button></div>
         <div className="messages">{messages.map((message, index) => { const agentId = message.author === 'You' ? '' : message.author.startsWith('Maya') ? 'maya' : message.author.startsWith('Noah') ? 'noah' : message.author.startsWith('Adele') ? 'adele' : 'devon'; return <div className="message" key={`${message.id}-${message.spaceId}-${index}`}><Avatar id={agentId || 'you'} tone={message.tone} /><div><div className="message-meta">{agentId ? <button className="agent-name" onClick={() => openAgentPortfolio(agentId)}>{message.author}</button> : <b>{message.author}</b>}<span>{message.role}</span><time>{message.time}</time></div><p><MessageText text={message.text} openAgentPortfolio={openAgentPortfolio} /> {message.link && <a>{message.link}</a>}</p></div></div>})}</div>
         <MentionComposer className="message-composer" draft={draft} setDraft={setDraft} sendMessage={sendMessage} placeholder={`Message #${selectedTeamSpace.name}`}/>
       </section>
-      <section className="card activity-card"><div className="section-head"><div><span className="eyebrow">LIVE ORG ACTIVITY</span><h2>While you were away</h2></div><button className="ghost-button" onClick={() => setView('feedback')}>View evidence <ArrowRight size={14} /></button></div>
-        <div className="activity-item"><span className="activity-icon mint"><GitBranch size={15} /></span><p><b>Devon</b> merged <a>PR #477</a><small>12 min ago</small></p></div><div className="activity-item"><span className="activity-icon orange"><CircleDot size={15} /></span><p><b>Maya</b> reprioritized <a>PROJ-191</a><small>24 min ago</small></p></div><div className="activity-item"><span className="activity-icon lavender"><Bot size={15} /></span><p><b>QA bot</b> flagged a regression risk<a>Release note</a><small>31 min ago</small></p></div>
+      <section className="card activity-card"><div className="section-head"><div><span className="eyebrow">LIVE ORG ACTIVITY</span><h2>Recent ledger activity</h2></div><button className="ghost-button" onClick={() => setView('feedback')}>View evidence <ArrowRight size={14} /></button></div>
+        {ledgerActivity.length
+          ? ledgerActivity.map((item) => <div className="activity-item" key={item.id}>{activityIcon(item.icon)}<p>{item.title}<small>{item.detail}</small></p></div>)
+          : <p className="empty-org-panel">No simulation events yet. Post a stand-up or open work to start the activity feed.</p>}
         {activity.map((item) => <div className="activity-item learner-activity" key={item.id}><span className="activity-icon blue"><Check size={15} /></span><p><b>You</b> {item.text}<small>just now</small></p></div>)}
       </section>
     </div>

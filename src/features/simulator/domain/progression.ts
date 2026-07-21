@@ -7,6 +7,8 @@ type Requirement = { label: string; complete: boolean }
 export type ScenarioProgression = {
   currentLevel: ScenarioLevel
   completedTaskIds: string[]
+  /** Levels whose full assigned task queue is delivered through the merge gate. */
+  completedLevels: ScenarioLevel[]
   scores: Record<AssessmentDimension, number>
   overallScore: number
   nextLevel: Exclude<ScenarioLevel, 'advanced'> | 'advanced' | null
@@ -18,6 +20,12 @@ export type ScenarioProgression = {
 
 const average = (scores: Record<AssessmentDimension, number>) => Math.round(Object.values(scores).reduce((total, score) => total + score, 0) / 4)
 const completionsFor = (events: SimulationEvent[], level: ScenarioLevel) => [...new Set(events.filter((event) => event.type === 'task_completed' && event.metadata?.level === level).map((event) => String(event.metadata?.issueId || '')).filter(Boolean))]
+
+/** A level is complete when every assigned task for that level has cleared the merge gate. */
+export function isScenarioLevelComplete(events: SimulationEvent[], level: ScenarioLevel) {
+  const completed = completionsFor(events, level)
+  return taskIdsForScenarioLevel[level].every((taskId) => completed.includes(taskId))
+}
 
 function requirementsFor(level: ScenarioLevel, events: SimulationEvent[], scores: Record<AssessmentDimension, number>, overallScore: number): Requirement[] {
   const completed = completionsFor(events, level)
@@ -49,7 +57,8 @@ export function deriveScenarioProgression(events: SimulationEvent[]): ScenarioPr
   const pendingTaskIds = taskIdsForScenarioLevel[currentLevel].filter((id) => !completedTaskIds.includes(id))
   const activeCycle = activeDeliveryCycle(events)
   const activeTaskId = activeCycle?.level === currentLevel ? activeCycle.taskId : pendingTaskIds[0] || null
-  return { currentLevel, completedTaskIds, scores: report.scores, overallScore, nextLevel, requirements, unlockedLevels, activeTaskId, pendingTaskIds }
+  const completedLevels = (['basic', 'intermediate', 'advanced'] as ScenarioLevel[]).filter((level) => isScenarioLevelComplete(events, level))
+  return { currentLevel, completedTaskIds, completedLevels, scores: report.scores, overallScore, nextLevel, requirements, unlockedLevels, activeTaskId, pendingTaskIds }
 }
 
 export function scenarioLevelChangeError(events: SimulationEvent[], desiredLevel: ScenarioLevel) {

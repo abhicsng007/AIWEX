@@ -50,6 +50,60 @@ describe('health and demo auth', () => {
     assert.equal(onboarding.json?.state?.phase, 'qualified')
   })
 
+  it('GET /demo?complete=1 builds a full Basic→Advanced showcase via real APIs', async (t) => {
+    if (!client) return t.skip('server unavailable')
+    const demo = new ApiClient()
+    // Full journey runs real validate + report endpoints; allow a long timeout.
+    const started = await demo.get('/demo?complete=1')
+    assert.ok(demo.demoRunId, 'complete demo cookie')
+    assert.match(demo.demoRunId, /^demo-[0-9a-f-]{36}$/i)
+    assert.ok([200, 302, 303, 307].includes(started.status) || Boolean(demo.demoRunId))
+
+    const onboarding = await demo.get('/api/simulation/onboarding')
+    assert.equal(onboarding.status, 200)
+    assert.equal(onboarding.json?.state?.phase, 'qualified')
+
+    const events = await demo.get('/api/simulation/events')
+    assert.equal(events.status, 200)
+    const ledger = events.json?.events || []
+    const completions = ledger
+      .filter((event) => event.type === 'task_completed')
+      .map((event) => `${event.metadata?.level}:${event.metadata?.issueId}`)
+    assert.deepEqual(completions, [
+      'basic:PROJ-184',
+      'intermediate:PROJ-191',
+      'intermediate:PROJ-189',
+      'advanced:PROJ-203',
+      'advanced:PROJ-204',
+      'advanced:PROJ-205',
+    ])
+    assert.ok(ledger.some((event) => event.type === 'task_report_created'))
+    assert.ok(ledger.some((event) => event.type === 'project_report_created'))
+    assert.ok(ledger.some((event) => event.type === 'checks_passed'))
+    assert.ok(ledger.some((event) => event.type === 'agent_reply'))
+    assert.ok(ledger.some((event) => event.type === 'schedule_event_completed'))
+    assert.ok(ledger.some((event) => event.type === 'meeting_ended'))
+    assert.ok(ledger.some((event) => event.type === 'issue_updated' && event.metadata?.status === 'done'))
+    assert.ok(ledger.some((event) => event.type === 'scenario_deployment_recorded'))
+    assert.ok(ledger.filter((event) => event.type === 'pull_request_merged').length >= 6)
+
+    const schedule = await demo.get('/api/simulation/schedule')
+    assert.equal(schedule.status, 200)
+    const openBlocks = (schedule.json?.schedule || []).filter((item) => !item.completed)
+    assert.equal(openBlocks.length, 0, `calendar still open: ${openBlocks.map((item) => item.id).join(', ')}`)
+
+    const meetings = await demo.get('/api/simulation/meetings')
+    assert.equal(meetings.status, 200)
+    const openMeetings = (meetings.json?.meetings || []).filter((meeting) => meeting.startedAt && !meeting.endedAt)
+    assert.equal(openMeetings.length, 0)
+    assert.ok((meetings.json?.meetings || []).every((meeting) => meeting.endedAt))
+
+    const feedback = await demo.get('/api/simulation/feedback')
+    assert.equal(feedback.status, 200)
+    assert.ok(feedback.json?.report?.scores?.technicalExecution >= 70)
+    assert.ok((feedback.json?.deliveryReports || []).length >= 1)
+  })
+
   it('rejects cross-tenant organizationId mismatches', async (t) => {
     if (!client) return t.skip('server unavailable')
     const demo = new ApiClient()

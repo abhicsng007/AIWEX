@@ -92,23 +92,130 @@ being completed simply by clicking through the interface.
 
 ## Run locally
 
-Install dependencies and start the development server:
+### Prerequisites
+
+- **Node.js 20+** (LTS recommended) and npm
+- Git
+- Optional: a Supabase project (only if you want auth + durable persistence)
+- Optional: an OpenRouter key (only if you want live AI teammate replies)
+
+The core product and demo mode run **without** Supabase or OpenRouter. Without
+them, events stay in the in-memory store for the current server process, and
+teammates use the deterministic local provider.
+
+### 1. Clone and install
 
 ~~~bash
+git clone https://github.com/abhicsng007/AIWEX.git aiwex
+cd aiwex
 npm ci
+~~~
+
+Use `npm install` only if you are intentionally refreshing the lockfile.
+
+### 2. Environment (optional for demos)
+
+Copy the example env file if you want auth, persistence, or live AI:
+
+~~~bash
+# Windows (PowerShell)
+Copy-Item .env.example .env.local
+
+# macOS / Linux
+cp .env.example .env.local
+~~~
+
+Minimum notes:
+
+| Goal | What to set |
+| --- | --- |
+| Local demos only | Nothing required. Demo mode is on in development by default. |
+| Sign-in (Google / GitHub / magic link) | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
+| Durable events + file uploads | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` + run SQL migrations in `supabase/migrations/` |
+| Live AI teammates | `OPENROUTER_API_KEY` (and optionally `OPENROUTER_MODELS`) |
+| Production demos | `DEMO_MODE=true` (disabled by default when `NODE_ENV=production`) |
+
+Never put service-role keys in `NEXT_PUBLIC_*` variables. See [Configuration](#configuration)
+and `docs/supabase-backend.md` / `docs/openrouter.md` for details.
+
+### 3. Start the app
+
+~~~bash
 npm run dev
 ~~~
 
-Then open http://localhost:3000.
+Open http://localhost:3000.
 
-For a disposable local demo without signing in, open:
+Health check (optional):
 
-- http://localhost:3000/demo?onboarding=1 for the full onboarding journey
-- http://localhost:3000/demo for a pre-qualified run
+~~~bash
+curl http://localhost:3000/api/health
+~~~
 
-No API key is required for local demo mode. If you want to configure external
-services, copy .env.example to .env.local only if you do not already have a
-local configuration.
+You should see `"status":"ok"`.
+
+### 4. Production-style local run (optional)
+
+~~~bash
+npm run build
+npm run start
+~~~
+
+Still serve on http://localhost:3000. For production demos on this build, set
+`DEMO_MODE=true` in `.env.local`.
+
+### Disposable demos (no sign-in)
+
+AIWEX issues an isolated `aiwex_demo_run` cookie for each demo. Demo progress is
+not copied into a real account when you later sign up.
+
+| Link | What you get |
+| --- | --- |
+| http://localhost:3000/demo?onboarding=1 | Clean start: full onboarding academy from profile through readiness |
+| http://localhost:3000/demo | Pre-qualified Day-1 access (onboarding already complete; project unlocked) |
+| http://localhost:3000/demo?complete=1 | **Full journey showcase** — finished Basic → Intermediate → Advanced run |
+
+**Complete showcase** (`/demo?complete=1` or `/demo?journey=complete`):
+
+- Builds a fresh disposable run by calling the **real HTTP APIs** (not a fake
+  static snapshot): onboarding, team welcome, agent turn, workspace save,
+  scenario validation, commit/PR/review/merge, task reports, project report,
+  performance evidence, meetings, and calendar completion.
+- Lands in `/demo/workspace` with project work already delivered: all six
+  learner tasks complete, Basic/Intermediate/Advanced marked **Completed**,
+  calendar and meetings closed, issues/PRs reflecting ledger state, and
+  Feedback reports ready.
+- Takes about **30–60 seconds** on first open while server-side validation runs.
+- Also linked from the landing page as **Full journey showcase**.
+
+### 5. Verify with tests (optional)
+
+Keep `npm run dev` running in one terminal for e2e, then:
+
+~~~bash
+# Domain logic only (no server)
+npm run test:unit
+
+# HTTP e2e against localhost:3000
+npm run test:e2e
+
+# Unit + e2e
+npm test
+
+# Optional long journey script
+npm run test:e2e:journey
+~~~
+
+### Common issues
+
+| Symptom | What to try |
+| --- | --- |
+| Port 3000 already in use | Stop the other process, or run `npx next dev -p 3001` and open that port |
+| `/demo` redirects to sign-in in production build | Set `DEMO_MODE=true` in `.env.local` |
+| Auth UI says keys are missing | Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
+| Events disappear after restart | Expected without Supabase; configure service-role env + migrations for durability |
+| Workspace checks fail | Ensure you ran `npm ci` at the repo root (scenario tests live under `scenarios/`) |
+| Complete showcase times out | Wait up to ~60s; first open runs real scenario validation for each task |
 
 ## Configuration
 

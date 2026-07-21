@@ -62,7 +62,10 @@ export function deriveWorkflowState(events: SimulationEvent[]): WorkflowState {
 }
 
 export function validateWorkflowTransition(state: WorkflowState, type: SimulationEventType, metadata?: SimulationEvent['metadata']): string | null {
-  if (state.merged && !['chat_message', 'agent_reply', 'simulation_time_advanced', 'team_space_created', 'team_space_updated', 'chat_message_edited', 'chat_message_deleted', 'message_pinned', 'message_marked_decision', 'message_marked_risk', 'message_marked_question', 'message_marked_handoff', 'message_marked_blocker', 'thread_resolved', 'followup_created', 'followup_completed', 'space_archived', 'space_member_added', 'space_member_removed', 'scenario_level_selected', 'delivery_cycle_started', 'task_completed', 'level_unlocked', 'load_test_recorded', 'scenario_deployment_recorded'].includes(type)) return 'This pull request is already merged.'
+  // Board, calendar, and collaboration events remain open after merge so a
+  // completed showcase (or a real workday after ship) can still close issues,
+  // advance time, and record post-merge operational evidence.
+  if (state.merged && !['chat_message', 'agent_reply', 'simulation_time_advanced', 'team_space_created', 'team_space_updated', 'chat_message_edited', 'chat_message_deleted', 'message_pinned', 'message_marked_decision', 'message_marked_risk', 'message_marked_question', 'message_marked_handoff', 'message_marked_blocker', 'thread_resolved', 'followup_created', 'followup_completed', 'space_archived', 'space_member_added', 'space_member_removed', 'scenario_level_selected', 'delivery_cycle_started', 'task_completed', 'level_unlocked', 'load_test_recorded', 'scenario_deployment_recorded', 'issue_created', 'issue_updated'].includes(type)) return 'This pull request is already merged.'
   if (type === 'standup_posted' && state.standupPosted) return 'Today’s stand-up was already posted.'
   if (type === 'checks_passed' && state.committed) return 'Create a new branch change before running checks again.'
   if (type === 'commit_created' && !state.checksPassed) return 'Pass the branch checks before committing.'

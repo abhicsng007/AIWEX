@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { NextRequest } from 'next/server'
+import type { NextRequest, NextResponse } from 'next/server'
 
 export const demoCookieName = 'aiwex_demo_run'
 const demoRunPattern = /^demo-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -21,4 +21,19 @@ export function demoRunFromRequest(request: NextRequest) {
 
 export function createDemoRunId() {
   return `demo-${randomUUID()}`
+}
+
+/** Clear the httpOnly demo cookie. Client JS cannot clear httpOnly cookies. */
+export function clearDemoCookie(response: NextResponse, request?: NextRequest) {
+  const secure = request ? request.nextUrl.protocol === 'https:' : process.env.NODE_ENV === 'production'
+  response.cookies.set({
+    name: demoCookieName,
+    value: '',
+    httpOnly: true,
+    sameSite: 'lax',
+    secure,
+    path: '/',
+    maxAge: 0,
+  })
+  return response
 }

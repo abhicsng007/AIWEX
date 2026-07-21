@@ -46,6 +46,7 @@ describe('deriveScenarioProgression', () => {
     assert.equal(progression.currentLevel, 'basic')
     assert.deepEqual(progression.unlockedLevels, ['basic'])
     assert.equal(progression.completedTaskIds.length, 0)
+    assert.deepEqual(progression.completedLevels, [])
   })
 
   it('unlocks intermediate after a strong basic completion', () => {
@@ -59,6 +60,8 @@ describe('deriveScenarioProgression', () => {
     assert.ok(progression.unlockedLevels.includes('intermediate'))
     assert.ok(progression.overallScore >= 60)
     assert.ok(progression.requirements.every((item) => item.complete))
+    assert.ok(progression.completedLevels.includes('basic'))
+    assert.ok(!progression.completedLevels.includes('intermediate'))
   })
 
   it('tracks intermediate completions and can unlock advanced', () => {
@@ -78,6 +81,9 @@ describe('deriveScenarioProgression', () => {
     assert.equal(progression.currentLevel, 'intermediate')
     assert.deepEqual(progression.completedTaskIds.sort(), ['PROJ-189', 'PROJ-191'].sort())
     assert.ok(progression.unlockedLevels.includes('advanced'))
+    assert.ok(progression.completedLevels.includes('basic'))
+    assert.ok(progression.completedLevels.includes('intermediate'))
+    assert.ok(!progression.completedLevels.includes('advanced'))
   })
 })
 

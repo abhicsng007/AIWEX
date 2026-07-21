@@ -263,7 +263,7 @@ function ReadinessView({ state, questions, answers, setAnswers, submit, feedback
   </OnboardingFrame>
 }
 
-function ReadinessResultView({ state, evaluation, retry, openProject }: { state: PublicOnboardingState; evaluation: ReadinessEvaluation; retry: () => void; openProject: () => void }) {
+function ReadinessResultView({ state, evaluation, retry, openProject, introComplete }: { state: PublicOnboardingState; evaluation: ReadinessEvaluation; retry: () => void; openProject: () => void; introComplete?: boolean }) {
   return <OnboardingFrame state={state}>
     <section className={`card readiness-result ${evaluation.passed ? 'approved' : 'needs-work'}`}>
       <div className="readiness-result-head">
@@ -279,14 +279,35 @@ function ReadinessResultView({ state, evaluation, retry, openProject }: { state:
       </div>
       <div className="readiness-result-actions">
         {evaluation.passed
-          ? <button className="primary-button" onClick={openProject}>Join introduction meeting <ArrowRight size={15} /></button>
+          ? introComplete
+            ? <button className="complete-button done" type="button" disabled><Check size={15} /> Introduction complete</button>
+            : <button className="primary-button" onClick={openProject}>Join introduction meeting <ArrowRight size={15} /></button>
           : <button className="primary-button" onClick={retry}>Review selections and try again <RotateCcw size={15} /></button>}
       </div>
     </section>
   </OnboardingFrame>
 }
 
-function QualifiedView({ state, openProject, updateSchedule, feedback, welcome }: { state: PublicOnboardingState; openProject: () => void; updateSchedule: (action: 'complete' | 'request_extension' | 'check_deadlines', scheduleId?: string) => Promise<void>; feedback: string; welcome: { started: boolean; introduced: boolean; concluded: boolean } | null }) {
+function QualifiedView({
+  state,
+  openProject,
+  updateSchedule,
+  feedback,
+  welcome,
+  introMeeting,
+}: {
+  state: PublicOnboardingState
+  openProject: () => void
+  updateSchedule: (action: 'complete' | 'request_extension' | 'check_deadlines', scheduleId?: string) => Promise<void>
+  feedback: string
+  welcome: { started: boolean; introduced: boolean; concluded: boolean } | null
+  introMeeting: { started: boolean; ended: boolean } | null
+}) {
+  const scheduleIntroDone = Boolean(state.schedule.find((item) => item.id === 'manager-checkin-day-1')?.completed)
+  const meetingDone = Boolean(introMeeting?.ended || scheduleIntroDone)
+  const welcomeDone = Boolean(welcome?.concluded || welcome?.introduced)
+  const introComplete = meetingDone || welcomeDone
+
   return <OnboardingFrame state={state}>
     <section className="qualified-command-center">
       <div>
@@ -294,7 +315,11 @@ function QualifiedView({ state, openProject, updateSchedule, feedback, welcome }
         <h2>Your SignalDesk work calendar is active</h2>
         <p>{state.managerReview.summary} Deadlines use your local timezone. Communicate risk early and keep evidence attached to the work.</p>
       </div>
-      <button className="primary-button" onClick={openProject}>Join introduction meeting <ArrowRight size={15} /></button>
+      {introComplete
+        ? <button className="complete-button done" type="button" disabled title="Introduction meeting already completed">
+            <Check size={15} /> Introduction complete
+          </button>
+        : <button className="primary-button" onClick={openProject}>Join introduction meeting <ArrowRight size={15} /></button>}
     </section>
     <SystemStatus state={state} />
     <section className="calendar-summary">
@@ -302,12 +327,29 @@ function QualifiedView({ state, openProject, updateSchedule, feedback, welcome }
       <div><CalendarDays size={17} /><span><b>{state.missedDeadlines}/2 grace events used</b><small>{state.penalties ? `${state.penalties} reliability deduction${state.penalties === 1 ? '' : 's'} applied` : 'No deadline deductions'}</small></span></div>
       <button className="ghost-button" onClick={() => void updateSchedule('check_deadlines')}>Refresh deadline status</button>
     </section>
-    {welcome && !welcome.concluded && <section className="card welcome-ceremony">
-      <span className="eyebrow">TEAM WELCOME CEREMONY</span>
-      <h2>{welcome.introduced ? 'The team has your introduction.' : 'Start with the live introduction meeting'}</h2>
-      <p>{welcome.introduced ? 'Marcus has concluded the welcome. You can now use Team Spaces for questions and scheduled handoffs.' : 'After onboarding, meet Marcus, Maya, Noah, and Devon in the conference room. Introduce yourself, share what you want to learn, and ask one initial question.'}</p>
-      {!welcome.introduced && <button className="primary-button" onClick={openProject}>Open introduction meeting <ArrowRight size={15} /></button>}
-    </section>}
+    <section className={`card welcome-ceremony ${introComplete ? 'welcome-complete' : ''}`}>
+      <span className="eyebrow">INTRODUCTION MEETING</span>
+      <h2>
+        {meetingDone
+          ? 'Introduction meeting complete'
+          : welcomeDone
+            ? 'Team welcome recorded'
+            : 'Start with the live introduction meeting'}
+      </h2>
+      <p>
+        {meetingDone
+          ? 'You joined the manager check-in, met the team, and closed the ceremony. Continue with Home, Calendar, and delivery work.'
+          : welcomeDone
+            ? 'Your introduction is on the team record. You can reopen Meetings anytime, or continue into the project calendar.'
+            : 'After onboarding, meet Marcus, Maya, Noah, and Devon in the conference room. Introduce yourself, share what you want to learn, and ask one initial question.'}
+      </p>
+      {introComplete
+        ? <div className="welcome-complete-actions">
+            <span className="helper-success"><Check size={14} /> Done</span>
+            <button className="ghost-button" type="button" onClick={openProject}>Reopen meeting room <ArrowRight size={14} /></button>
+          </div>
+        : <button className="primary-button" onClick={openProject}>Open introduction meeting <ArrowRight size={15} /></button>}
+    </section>
     <section className="calendar-list">{state.schedule.map((item) => <article className={`card calendar-item ${item.missed ? 'missed' : item.completed ? 'completed' : ''}`} key={item.id}>
       <div><span className="calendar-kind">{item.kind}</span><h2>{item.title}</h2><p>{new Date(item.startsAt).toLocaleString()} - {new Date(item.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p></div>
       <div className="calendar-actions">{item.completed ? <span><Check size={15} /> Complete</span> : item.missed ? <span className="missed-label"><CircleAlert size={15} /> Missed</span> : <><button className="ghost-button" onClick={() => void updateSchedule('complete', item.id)}>Mark complete</button>{item.kind === 'deadline' && <button className="ghost-button" onClick={() => void updateSchedule('request_extension', item.id)} disabled={item.extensionRequested}>{item.extensionRequested ? 'Extension requested' : 'Request reschedule'}</button>}</>}</div>
@@ -325,10 +367,17 @@ export default function FunctionalOnboardingView({ organizationId, onQualified, 
   const [readinessQuestions, setReadinessQuestions] = useState<ClientReadinessQuestion[]>([])
   const [readinessAnswers, setReadinessAnswers] = useState<Record<string, number>>({})
   const [welcome, setWelcome] = useState<{ started: boolean; introduced: boolean; concluded: boolean } | null>(null)
+  const [introMeeting, setIntroMeeting] = useState<{ started: boolean; ended: boolean } | null>(null)
   const [feedback, setFeedback] = useState('')
   const [loading, setLoading] = useState(true)
   const statePhase = state?.phase
   const slide = useMemo(() => state?.currentSlide || (Array.isArray(slides) ? slides : []).find((item) => !state?.completedSlideIds.includes(item.id)), [slides, state?.completedSlideIds, state?.currentSlide])
+  const introComplete = Boolean(
+    introMeeting?.ended
+    || welcome?.concluded
+    || welcome?.introduced
+    || state?.schedule.some((item) => item.id === 'manager-checkin-day-1' && item.completed),
+  )
 
   const refresh = async () => {
     setLoading(true)
@@ -360,11 +409,13 @@ export default function FunctionalOnboardingView({ organizationId, onQualified, 
     }
     if (payload.action === 'submit_readiness' && data.evaluation) {
       setReadinessResult(data.evaluation)
-      // Passing readiness unlocks the project and routes into the introduction meeting room.
+      // Passing readiness unlocks the project and routes into the introduction meeting room —
+      // only when that ceremony has not already been completed (e.g. complete showcase demos).
       if (data.evaluation.passed && data.state.phase === 'qualified') {
         setState(data.state)
         onQualified()
-        openProject()
+        const alreadyDone = data.state.schedule.some((item) => item.id === 'manager-checkin-day-1' && item.completed)
+        if (!alreadyDone && !introMeeting?.ended) openProject()
         return
       }
     }
@@ -379,17 +430,29 @@ export default function FunctionalOnboardingView({ organizationId, onQualified, 
     const response = await fetch('/api/simulation/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId, action, scheduleId }) })
     if (!response.ok) { const data = await response.json() as { error?: string }; setFeedback(data.error || 'Schedule update failed.'); return }
     await refresh()
+    await refreshIntroMeeting()
   }
 
   const refreshWelcome = async (startIfNeeded = false) => {
     const response = await fetch(`/api/simulation/team-welcome?organizationId=${encodeURIComponent(organizationId)}`, { cache: 'no-store' })
     if (!response.ok) return
     const data = await response.json() as { state: { started: boolean; introduced: boolean; concluded: boolean } }
-    if (startIfNeeded && !data.state.started) {
+    if (startIfNeeded && !data.state.started && !introMeeting?.ended) {
       const started = await fetch('/api/simulation/team-welcome', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationId, action: 'start' }) })
       if (started.ok) { const result = await started.json() as { state: { started: boolean; introduced: boolean; concluded: boolean } }; setWelcome(result.state); return }
     }
     setWelcome(data.state)
+  }
+
+  const refreshIntroMeeting = async () => {
+    const response = await fetch(`/api/simulation/meetings?organizationId=${encodeURIComponent(organizationId)}`, { cache: 'no-store' })
+    if (!response.ok) return
+    const data = await response.json() as { meetings?: Array<{ id: string; startedAt?: string | null; endedAt?: string | null }> }
+    const intro = (data.meetings || []).find((meeting) => meeting.id === 'manager-checkin')
+    setIntroMeeting({
+      started: Boolean(intro?.startedAt),
+      ended: Boolean(intro?.endedAt),
+    })
   }
 
   useEffect(() => {
@@ -399,17 +462,23 @@ export default function FunctionalOnboardingView({ organizationId, onQualified, 
     return () => window.clearInterval(timer)
   }, [statePhase])
 
-  useEffect(() => { if (statePhase === 'qualified') void refreshWelcome(true) }, [statePhase])
+  useEffect(() => {
+    if (statePhase !== 'qualified') return
+    void refreshWelcome(true)
+    void refreshIntroMeeting()
+    const timer = window.setInterval(() => { void refreshIntroMeeting() }, 15_000)
+    return () => window.clearInterval(timer)
+  }, [statePhase])
 
   if (loading || !state) return <div className="page onboarding-page"><div className="onboarding-loading"><Clock3 size={18} /> Loading organizational onboarding...</div></div>
   if (state.phase === 'not_started') return <StartView state={state} submit={submit} />
   if (quizReview) return <QuizAnswerReview review={quizReview} continueLearning={() => { setQuizReview(null); setFeedback('') }} state={state} />
-  if (readinessResult) return <ReadinessResultView state={state} evaluation={readinessResult} retry={() => { setReadinessResult(null); void submit({ action: 'resume_readiness' }) }} openProject={openProject} />
+  if (readinessResult) return <ReadinessResultView state={state} evaluation={readinessResult} retry={() => { setReadinessResult(null); void submit({ action: 'resume_readiness' }) }} openProject={openProject} introComplete={introComplete} />
   if (state.phase === 'profile') return <ProfileView state={state} submit={submit} />
   if (state.phase === 'policy') return <PolicyView state={state} submit={submit} />
   if (state.phase === 'access') return <AccessView state={state} submit={submit} />
   if (state.phase === 'training' && slide) return <TrainingSession state={state} slide={slide} slides={slides} answer={answer} setAnswer={setAnswer} submit={submit} feedback={feedback} />
   if (state.phase === 'remediation') return <RemediationView state={state} submit={submit} />
   if (state.phase === 'demo_task') return <ReadinessView state={state} questions={readinessQuestions} answers={readinessAnswers} setAnswers={setReadinessAnswers} submit={submit} feedback={feedback} />
-  return <QualifiedView state={state} openProject={openProject} updateSchedule={updateSchedule} feedback={feedback} welcome={welcome} />
+  return <QualifiedView state={state} openProject={openProject} updateSchedule={updateSchedule} feedback={feedback} welcome={welcome} introMeeting={introMeeting} />
 }
