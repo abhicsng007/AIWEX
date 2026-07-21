@@ -17,7 +17,7 @@ function reportDate(value: string) {
 }
 
 function signalLabel(status: RecruiterSignalStatus) {
-  if (status === 'verified') return 'Verified evidence'
+  if (status === 'verified') return 'Verified in ledger'
   if (status === 'partial') return 'Partially evidenced'
   return 'Evidence needed'
 }
@@ -25,24 +25,86 @@ function signalLabel(status: RecruiterSignalStatus) {
 function ReportCard({ report, index, open, onToggle }: { report: DeliveryReport; index: number; open: boolean; onToggle: () => void }) {
   const verified = report.recruiterSignals.filter((signal) => signal.status === 'verified').length
   const isFinal = report.kind === 'project'
+  const highlights = report.evidenceHighlights?.length ? report.evidenceHighlights : report.strengths
   return <article className={`delivery-report ${isFinal ? 'final-report' : ''}`}>
     <button className="delivery-report-summary" onClick={onToggle} aria-expanded={open}>
       <span className="delivery-report-marker">{isFinal ? <ShieldCheck size={15} /> : index + 1}</span>
-      <span className="delivery-report-title"><small>{isFinal ? 'FINAL PROJECT REPORT' : `${String(report.scenarioLevel).toUpperCase()} DELIVERY REPORT`}</small><b>{report.taskId ? `${report.taskId} · ${report.taskTitle}` : report.taskTitle}</b><em>{reportDate(report.createdAt)} · {verified}/{report.recruiterSignals.length} signals verified</em></span>
+      <span className="delivery-report-title">
+        <small>{isFinal ? 'FINAL PROJECT REPORT' : `${String(report.scenarioLevel).toUpperCase()} DELIVERY REPORT`}</small>
+        <b>{report.taskId ? `${report.taskId} · ${report.taskTitle}` : report.taskTitle}</b>
+        <em>{reportDate(report.createdAt)} · {verified}/{report.recruiterSignals.length} evidence dimensions verified</em>
+      </span>
       <ChevronDown size={18} className={open ? 'open' : ''} />
     </button>
     {open && <div className="delivery-report-body">
       <p className="delivery-report-summary-text">{report.summary}</p>
-      <div className="delivery-report-insight"><FileCheck2 size={17} /><div><b>What this demonstrates</b><p>{report.strengths.join(' · ')}</p>{report.growthArea && <p className="growth-area"><b>Build next:</b> {report.growthArea}</p>}</div></div>
+
+      {highlights.length > 0 && (
+        <section className="evidence-highlights" aria-label="Evidence highlights">
+          <div className="report-section-head"><span className="eyebrow">EVIDENCE HIGHLIGHTS</span><small>Concrete facts from the ledger</small></div>
+          <ul className="evidence-highlight-list">
+            {highlights.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </section>
+      )}
+
+      <div className="delivery-report-insight">
+        <FileCheck2 size={17} />
+        <div>
+          <b>What a recruiter can verify</b>
+          <p>{report.strengths.join(' ')}</p>
+          {report.growthArea && <p className="growth-area"><b>Gap still visible in the ledger:</b> {report.growthArea}</p>}
+        </div>
+      </div>
+
       <section className="recruiter-signal-list" aria-label="Recruiter-relevant evidence">
-        <div className="report-section-head"><span className="eyebrow">RECRUITER-RELEVANT EVIDENCE</span><small>Claim versus recorded proof</small></div>
-        {report.recruiterSignals.map((signal) => <article className={`recruiter-signal ${signal.status}`} key={signal.id}>
-          <span>{signal.status === 'verified' ? <Check size={15} /> : signal.status === 'partial' ? <CircleAlert size={15} /> : <Clock3 size={15} />}</span>
-          <div><div className="recruiter-signal-head"><b>{signal.label}</b><small>{signalLabel(signal.status)}</small></div><p className="claim">Resume-style claim: {signal.claim}</p><p>{signal.finding}</p><em>{signal.eventIds.length ? `${signal.eventIds.length} linked ledger event${signal.eventIds.length === 1 ? '' : 's'}` : 'No linked ledger event yet'}</em></div>
-        </article>)}
+        <div className="report-section-head">
+          <span className="eyebrow">RECRUITER EVIDENCE DIMENSIONS</span>
+          <small>Findings + artifacts (not resume claims)</small>
+        </div>
+        {report.recruiterSignals.map((signal) => (
+          <article className={`recruiter-signal ${signal.status}`} key={signal.id}>
+            <span>{signal.status === 'verified' ? <Check size={15} /> : signal.status === 'partial' ? <CircleAlert size={15} /> : <Clock3 size={15} />}</span>
+            <div>
+              <div className="recruiter-signal-head">
+                <b>{signal.label}</b>
+                <small>{signalLabel(signal.status)}</small>
+              </div>
+              <p className="signal-finding">{signal.finding}</p>
+              {signal.artifacts?.length ? (
+                <ul className="signal-artifacts">
+                  {signal.artifacts.map((artifact) => <li key={artifact}>{artifact}</li>)}
+                </ul>
+              ) : null}
+              <em>{signal.eventIds.length ? `${signal.eventIds.length} linked ledger event${signal.eventIds.length === 1 ? '' : 's'}` : 'No linked ledger event yet'}</em>
+            </div>
+          </article>
+        ))}
       </section>
-      <section className="delivery-timeline" aria-label="Task evidence timeline"><div className="report-section-head"><span className="eyebrow">RECORDED DELIVERY TRAIL</span><small>{report.timeline.length} relevant events</small></div>{report.timeline.length ? report.timeline.map((item) => <div className="delivery-timeline-item" key={item.eventId}><i /><span><b>{item.label}</b><small>{reportDate(item.at)}</small></span></div>) : <p>No workflow evidence was available when this snapshot was created.</p>}</section>
-      <p className="report-disclaimer">This is a learning portfolio for this simulation, not an employment verification or a hiring decision. It shows route-recorded app activity so you can practise backing up claims with concrete evidence.</p>
+
+      <section className="delivery-timeline" aria-label="Task evidence timeline">
+        <div className="report-section-head">
+          <span className="eyebrow">RECORDED DELIVERY TRAIL</span>
+          <small>{report.timeline.length} timestamped events</small>
+        </div>
+        {report.timeline.length
+          ? report.timeline.map((item) => (
+            <div className="delivery-timeline-item" key={item.eventId}>
+              <i />
+              <span>
+                <b>{item.label}</b>
+                {item.detail ? <p className="timeline-detail">{item.detail}</p> : null}
+                <small>{reportDate(item.at)}</small>
+              </span>
+            </div>
+          ))
+          : <p>No workflow evidence was available when this snapshot was created.</p>}
+      </section>
+
+      <p className="report-disclaimer">
+        This portfolio is generated only from append-only simulation events (ids, timestamps, and metadata).
+        It is practice evidence for this scenario, not an employer verification or hiring decision.
+      </p>
     </div>}
   </article>
 }
@@ -72,10 +134,10 @@ export default function FunctionalFeedbackView({ organizationId }: Props) {
   const readiness = Math.round((scores.technicalExecution + scores.collaboration + scores.ownershipReliability + scores.processFit) / 4)
   const finalReport = deliveryReports.find((item) => item.kind === 'project')
   return <div className="page feedback-page">
-    <section className="page-title"><div><p className="eyebrow">PRIVATE COACHING · SERVER-DERIVED</p><h1>How you’re working</h1><p>Scores are calculated from recorded organization events and show the evidence behind every signal.</p></div><div className="feedback-actions"><button className="refresh-feedback" onClick={refresh} disabled={isLoading}><RefreshCw size={14} className={isLoading ? 'spin' : ''} /> Refresh evidence</button><span className="private-badge"><Lock size={14} /> Private</span></div></section>
+    <section className="page-title"><div><p className="eyebrow">PRIVATE COACHING · SERVER-DERIVED</p><h1>How you’re working</h1><p>Scores and delivery cards are calculated only from recorded organization events, with concrete artifacts a recruiter can inspect.</p></div><div className="feedback-actions"><button className="refresh-feedback" onClick={refresh} disabled={isLoading}><RefreshCw size={14} className={isLoading ? 'spin' : ''} /> Refresh evidence</button><span className="private-badge"><Lock size={14} /> Private</span></div></section>
     <div className="coaching-hero"><div><span className="eyebrow">CURRENT SIMULATION SIGNAL</span><h2>{isLoading ? 'Reading the organization trail…' : readiness >= 75 ? 'You’re closing the loop well.' : 'Your evidence is taking shape.'}</h2><p>{isLoading ? 'Loading the immutable event record for this organization.' : report?.eventCount ? `This report is based on ${report.eventCount} recorded learner and agent event${report.eventCount === 1 ? '' : 's'}, not a hidden model judgment.` : 'No server-side evidence is recorded yet. Complete an action in the simulator to begin an assessment trail.'}</p>{report && <div className="next-coaching-step"><Sparkles size={16} /><span><b>Next best action:</b> {report.nextStep}</span></div>}</div><Score score={readiness} label="Work readiness" accent="#7c70f2" /></div>
     <div className="score-grid"><Score score={scores.technicalExecution} label="Technical execution" accent="#3eae90" /><Score score={scores.collaboration} label="Collaboration" accent="#7c70f2" /><Score score={scores.ownershipReliability} label="Ownership & reliability" accent="#ee9d5c" /><Score score={scores.processFit} label="Process fit" accent="#5899e7" /></div>
-    <section className="delivery-history"><div className="section-head"><div><span className="eyebrow">DELIVERY EVIDENCE HISTORY</span><h2>Task reports, in the order you completed them</h2><p>Each card is an immutable snapshot created when a task clears the merge gate. Open a card to see what a recruiter can reasonably verify instead of merely trust.</p></div><span className={`report-progress ${finalReport ? 'complete' : ''}`}>{finalReport ? 'Final report ready' : `${deliveryReports.filter((item) => item.kind === 'task').length}/6 task reports`}</span></div>
+    <section className="delivery-history"><div className="section-head"><div><span className="eyebrow">DELIVERY EVIDENCE HISTORY</span><h2>Task reports, in the order you completed them</h2><p>Each card is an immutable snapshot created when a task clears the merge gate. Open a card for timestamps, quotes, IDs, and linked ledger events.</p></div><span className={`report-progress ${finalReport ? 'complete' : ''}`}>{finalReport ? 'Final report ready' : `${deliveryReports.filter((item) => item.kind === 'task').length}/6 task reports`}</span></div>
       {isLoading && <div className="feedback-loading"><Clock3 size={16} /> Reading delivery-report history…</div>}
       {!isLoading && deliveryReports.length === 0 && <div className="empty-delivery-history"><FileCheck2 size={20} /><div><b>Your first delivery report will appear here.</b><p>Finish a task through checks, review, approval, and merge. The system will then capture the evidence automatically.</p></div></div>}
       <div className="delivery-report-timeline">{deliveryReports.map((item, index) => <ReportCard key={item.id} report={item} index={index} open={openReportId === item.id} onToggle={() => setOpenReportId((current) => current === item.id ? null : item.id)} />)}</div>

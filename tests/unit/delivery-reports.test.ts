@@ -20,15 +20,33 @@ function event(type: SimulationEvent['type'], metadata: SimulationEvent['metadat
 function cycleEvents(issueId: string, level: 'basic' | 'intermediate' | 'advanced'): SimulationEvent[] {
   return [
     event('delivery_cycle_started', { level, taskId: issueId, sequence: 1 }),
-    event('standup_posted', { issueId, level }),
-    event('checks_passed', { verified: true }),
-    event('commit_created', { issueId }),
-    event('pull_request_opened', { issueId }),
-    event('review_addressed', { issueId }),
+    event('standup_posted', {
+      issueId,
+      level,
+      text: `Yesterday: prepared ${issueId}. Today: implement, validate, and open PR. Blocker: none.`,
+    }),
+    event('chat_message', {
+      channelId: 'engineering',
+      message: `@noah For ${issueId}, confirm canManageBilling keeps restricted roles on the legacy empty state.`,
+    }),
+    event('workspace_revision_saved', { path: 'app/components/alerts-panel.tsx' }),
+    event('checks_passed', { verified: true, sourceHash: 'abc123def456', durationMs: 420, command: 'node --test' }),
+    event('commit_created', {
+      issueId,
+      message: `feat(${issueId}): protect usage-alerts empty state with canManageBilling`,
+      branch: `feature/${issueId.toLowerCase()}-usage-alerts`,
+    }),
+    event('pull_request_opened', {
+      issueId,
+      title: `${issueId}: usage alerts empty state role guard`,
+      prNumber: 482,
+      branch: `feature/${issueId.toLowerCase()}-usage-alerts`,
+    }),
+    event('review_addressed', { issueId, summary: 'Used canManageBilling to gate the billing CTA.' }),
     event('review_reply', { response: 'Validated canManageBilling and legacy empty state with scenario checks.' }),
-    event('approval_granted', { issueId }),
+    event('approval_granted', { issueId, reviewer: 'noah' }),
     event('merge_rationale_recorded', { rationale: `Safe to merge ${issueId} after review and checks.` }),
-    event('pull_request_merged', { issueId, level }),
+    event('pull_request_merged', { issueId, level, prNumber: 482 }),
   ]
 }
 
@@ -48,6 +66,13 @@ describe('delivery reports', () => {
     assert.ok(report.timeline.length >= 5)
     assert.ok(report.recruiterSignals.some((signal) => signal.id === 'validated_delivery'))
     assert.ok(report.summary.length > 0)
+    assert.ok(report.evidenceHighlights.some((item) => /PROJ-184/.test(item)))
+    const delivery = report.recruiterSignals.find((signal) => signal.id === 'validated_delivery')
+    assert.ok(delivery)
+    assert.equal('claim' in delivery ? delivery.claim : undefined, undefined)
+    assert.ok(delivery.artifacts.some((item) => /sourceHash|Checks|Commit|PR/i.test(item)))
+    assert.ok(report.timeline.some((item) => item.detail && /canManageBilling|feature\//i.test(item.detail)))
+    assert.ok(!/Resume-style claim|“I shipped/i.test(JSON.stringify(report)))
   })
 
   it('returns null project report until the full project path is complete', () => {

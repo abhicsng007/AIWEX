@@ -958,8 +958,12 @@ html[data-theme='dark'] .org-map-last-activity { color:var(--aiwex-muted); }
 .recruiter-signal.verified .recruiter-signal-head small { color:#287959; background:#e2f4eb; }
 .recruiter-signal.partial .recruiter-signal-head small { color:#81622c; background:#fff1cf; }
 .recruiter-signal p { margin:4px 0 0; color:#6f7c91; font-size:10px; line-height:1.45; }
-.recruiter-signal .claim { color:#575b80; font-weight:600; }
+.recruiter-signal .signal-finding { color:#4f5c72; font-weight:600; }
 .recruiter-signal em { display:block; margin-top:5px; color:#8a94a4; font:500 9px 'DM Mono',monospace; font-style:normal; }
+.signal-artifacts,.evidence-highlight-list { margin:7px 0 0; padding:0 0 0 16px; color:#667588; font-size:10px; line-height:1.45; }
+.signal-artifacts li,.evidence-highlight-list li { margin:3px 0; }
+.evidence-highlights { margin:0 0 14px; }
+.timeline-detail { margin:3px 0 2px; color:#6b788d; font-size:10px; line-height:1.4; }
 .delivery-timeline { margin-top:2px; }
 .delivery-timeline > p { margin:8px 0 0; color:#7a8597; font-size:11px; }
 .delivery-timeline-item { position:relative; display:flex; gap:9px; min-height:28px; padding-left:5px; }
@@ -997,8 +1001,9 @@ html[data-theme='dark'] .recruiter-signal.needs_evidence > span { color:#b8c3d4;
 html[data-theme='dark'] .recruiter-signal-head b { color:var(--aiwex-ink); }
 html[data-theme='dark'] .recruiter-signal-head small { color:#c1ccdd; background:#26334b; }
 html[data-theme='dark'] .recruiter-signal p { color:#afbdd0; }
-html[data-theme='dark'] .recruiter-signal .claim { color:#cecaff; }
+html[data-theme='dark'] .recruiter-signal .signal-finding { color:#d5def0; }
 html[data-theme='dark'] .recruiter-signal em,html[data-theme='dark'] .report-section-head small { color:#9daabe; }
+html[data-theme='dark'] .signal-artifacts,html[data-theme='dark'] .evidence-highlight-list,html[data-theme='dark'] .timeline-detail { color:#a9b6c9; }
 html[data-theme='dark'] .delivery-timeline-item:not(:last-child):before { background:#37445d; }
 html[data-theme='dark'] .delivery-timeline-item b { color:#c1cce0; }
 html[data-theme='dark'] .delivery-timeline-item small,html[data-theme='dark'] .report-disclaimer { color:#a2aec0; }
