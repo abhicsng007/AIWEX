@@ -1,0 +1,2799 @@
+{
+  "report": {
+    "startedAt": "2026-07-21T03:31:42.892Z",
+    "baseUrl": "http://localhost:3000",
+    "runId": "demo-b7376b45-07ed-482c-9759-3e8aa5e0c2b6",
+    "steps": [
+      {
+        "label": "health",
+        "method": "GET",
+        "path": "/api/health",
+        "status": 200,
+        "ms": 733,
+        "ok": true
+      },
+      {
+        "label": "demo onboarding cookie",
+        "method": "GET",
+        "path": "/demo?onboarding=1",
+        "status": 307,
+        "ms": 198,
+        "ok": false
+      },
+      {
+        "label": "onboarding:start",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 201,
+        "ms": 265,
+        "ok": true
+      },
+      {
+        "label": "GET onboarding",
+        "method": "GET",
+        "path": "/api/simulation/onboarding",
+        "status": 200,
+        "ms": 21,
+        "ok": true
+      },
+      {
+        "label": "gate: standup before onboarding",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 125,
+        "ok": true,
+        "error": "Complete organizational onboarding, required access, and manager-approved readiness before working on the main project."
+      },
+      {
+        "label": "onboarding:confirm_profile",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 201,
+        "ms": 42,
+        "ok": true
+      },
+      {
+        "label": "policy:security-baseline",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 201,
+        "ms": 30,
+        "ok": true
+      },
+      {
+        "label": "policy:data-protection",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 201,
+        "ms": 44,
+        "ok": true
+      },
+      {
+        "label": "policy:engineering-operating-model",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 201,
+        "ms": 28,
+        "ok": true
+      },
+      {
+        "label": "access:workspace",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 201,
+        "ms": 26,
+        "ok": true
+      },
+      {
+        "label": "access:scenario-repo",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 201,
+        "ms": 25,
+        "ok": true
+      },
+      {
+        "label": "access:team-space",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 201,
+        "ms": 19,
+        "ok": true
+      },
+      {
+        "label": "access:staging",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 201,
+        "ms": 23,
+        "ok": true
+      },
+      {
+        "label": "access:docs",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 201,
+        "ms": 20,
+        "ok": true
+      },
+      {
+        "label": "GET onboarding for quiz",
+        "method": "GET",
+        "path": "/api/simulation/onboarding",
+        "status": 200,
+        "ms": 51,
+        "ok": true
+      },
+      {
+        "label": "quiz:company-mandate",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 200,
+        "ms": 69,
+        "ok": true
+      },
+      {
+        "label": "GET onboarding for quiz",
+        "method": "GET",
+        "path": "/api/simulation/onboarding",
+        "status": 200,
+        "ms": 38,
+        "ok": true
+      },
+      {
+        "label": "quiz:security-privacy",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 200,
+        "ms": 47,
+        "ok": true
+      },
+      {
+        "label": "GET onboarding for quiz",
+        "method": "GET",
+        "path": "/api/simulation/onboarding",
+        "status": 200,
+        "ms": 37,
+        "ok": true
+      },
+      {
+        "label": "quiz:next-contracts",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 200,
+        "ms": 76,
+        "ok": true
+      },
+      {
+        "label": "GET onboarding for quiz",
+        "method": "GET",
+        "path": "/api/simulation/onboarding",
+        "status": 200,
+        "ms": 27,
+        "ok": true
+      },
+      {
+        "label": "quiz:product-legacy-context",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 200,
+        "ms": 29,
+        "ok": true
+      },
+      {
+        "label": "GET onboarding for quiz",
+        "method": "GET",
+        "path": "/api/simulation/onboarding",
+        "status": 200,
+        "ms": 25,
+        "ok": true
+      },
+      {
+        "label": "quiz:delivery-readiness",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 200,
+        "ms": 24,
+        "ok": true
+      },
+      {
+        "label": "readiness:fail",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 200,
+        "ms": 34,
+        "ok": true
+      },
+      {
+        "label": "readiness:resume",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 201,
+        "ms": 43,
+        "ok": true
+      },
+      {
+        "label": "readiness:pass",
+        "method": "POST",
+        "path": "/api/simulation/onboarding",
+        "status": 201,
+        "ms": 23,
+        "ok": true
+      },
+      {
+        "label": "GET events",
+        "method": "GET",
+        "path": "/api/simulation/events",
+        "status": 200,
+        "ms": 33,
+        "ok": true
+      },
+      {
+        "label": "level:basic",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 34,
+        "ok": true
+      },
+      {
+        "label": "gate: pr-before-work PROJ-184",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 53,
+        "ok": true,
+        "error": "Post your stand-up and commit passing work before opening a pull request."
+      },
+      {
+        "label": "standup PROJ-184",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 97,
+        "ok": true
+      },
+      {
+        "label": "chat PROJ-184",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 81,
+        "ok": true
+      },
+      {
+        "label": "agent-turn:engineering",
+        "method": "POST",
+        "path": "/api/simulation/agent-turns",
+        "status": 201,
+        "ms": 1862,
+        "ok": true
+      },
+      {
+        "label": "workspace save PROJ-184",
+        "method": "PUT",
+        "path": "/api/simulation/workspace",
+        "status": 201,
+        "ms": 92,
+        "ok": true
+      },
+      {
+        "label": "validate fail PROJ-184",
+        "method": "POST",
+        "path": "/api/workspace/validate",
+        "status": 422,
+        "ms": 864,
+        "ok": true
+      },
+      {
+        "label": "gate: commit-before-checks PROJ-184",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 18,
+        "ok": true,
+        "error": "Pass the branch checks before committing."
+      },
+      {
+        "label": "validate pass PROJ-184",
+        "method": "POST",
+        "path": "/api/workspace/validate",
+        "status": 201,
+        "ms": 598,
+        "ok": true
+      },
+      {
+        "label": "commit PROJ-184",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 16,
+        "ok": true
+      },
+      {
+        "label": "pr PROJ-184",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 19,
+        "ok": true
+      },
+      {
+        "label": "gate: approval-before-review PROJ-184",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 17,
+        "ok": true,
+        "error": "A reviewer can approve only after you respond to the requested changes."
+      },
+      {
+        "label": "review_addressed PROJ-184",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 18,
+        "ok": true
+      },
+      {
+        "label": "review_reply PROJ-184",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 33,
+        "ok": true
+      },
+      {
+        "label": "agent-turn:engineering",
+        "method": "POST",
+        "path": "/api/simulation/agent-turns",
+        "status": 201,
+        "ms": 6533,
+        "ok": true
+      },
+      {
+        "label": "approval PROJ-184",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 21,
+        "ok": true
+      },
+      {
+        "label": "gate: short rationale PROJ-184",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 19,
+        "ok": true,
+        "error": "Record a clear merge rationale after approval."
+      },
+      {
+        "label": "rationale PROJ-184",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 22,
+        "ok": true
+      },
+      {
+        "label": "gate: complete-before-merge PROJ-184",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 21,
+        "ok": true,
+        "error": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+      },
+      {
+        "label": "merge PROJ-184",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 18,
+        "ok": true
+      },
+      {
+        "label": "task_completed PROJ-184",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 19,
+        "ok": true
+      },
+      {
+        "label": "GET events",
+        "method": "GET",
+        "path": "/api/simulation/events",
+        "status": 200,
+        "ms": 17,
+        "ok": true
+      },
+      {
+        "label": "GET events",
+        "method": "GET",
+        "path": "/api/simulation/events",
+        "status": 200,
+        "ms": 21,
+        "ok": true
+      },
+      {
+        "label": "gate: advanced-before-intermediate",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 20,
+        "ok": true,
+        "error": "Complete the current level requirements before starting advanced."
+      },
+      {
+        "label": "level:intermediate",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 16,
+        "ok": true
+      },
+      {
+        "label": "gate: pr-before-work PROJ-191",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 17,
+        "ok": true,
+        "error": "Post your stand-up and commit passing work before opening a pull request."
+      },
+      {
+        "label": "standup PROJ-191",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 19,
+        "ok": true
+      },
+      {
+        "label": "chat PROJ-191",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 16,
+        "ok": true
+      },
+      {
+        "label": "agent-turn:engineering",
+        "method": "POST",
+        "path": "/api/simulation/agent-turns",
+        "status": 201,
+        "ms": 7732,
+        "ok": true
+      },
+      {
+        "label": "workspace save PROJ-191",
+        "method": "PUT",
+        "path": "/api/simulation/workspace",
+        "status": 201,
+        "ms": 33,
+        "ok": true
+      },
+      {
+        "label": "validate fail PROJ-191",
+        "method": "POST",
+        "path": "/api/workspace/validate",
+        "status": 422,
+        "ms": 711,
+        "ok": true
+      },
+      {
+        "label": "gate: commit-before-checks PROJ-191",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 18,
+        "ok": true,
+        "error": "Pass the branch checks before committing."
+      },
+      {
+        "label": "validate pass PROJ-191",
+        "method": "POST",
+        "path": "/api/workspace/validate",
+        "status": 201,
+        "ms": 764,
+        "ok": true
+      },
+      {
+        "label": "commit PROJ-191",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 25,
+        "ok": true
+      },
+      {
+        "label": "pr PROJ-191",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 55,
+        "ok": true
+      },
+      {
+        "label": "gate: approval-before-review PROJ-191",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 44,
+        "ok": true,
+        "error": "A reviewer can approve only after you respond to the requested changes."
+      },
+      {
+        "label": "review_addressed PROJ-191",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 28,
+        "ok": true
+      },
+      {
+        "label": "review_reply PROJ-191",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 37,
+        "ok": true
+      },
+      {
+        "label": "agent-turn:engineering",
+        "method": "POST",
+        "path": "/api/simulation/agent-turns",
+        "status": 201,
+        "ms": 907,
+        "ok": true
+      },
+      {
+        "label": "approval PROJ-191",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 33,
+        "ok": true
+      },
+      {
+        "label": "gate: short rationale PROJ-191",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 75,
+        "ok": true,
+        "error": "Record a clear merge rationale after approval."
+      },
+      {
+        "label": "rationale PROJ-191",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 38,
+        "ok": true
+      },
+      {
+        "label": "gate: complete-before-merge PROJ-191",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 79,
+        "ok": true,
+        "error": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+      },
+      {
+        "label": "merge PROJ-191",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 19,
+        "ok": true
+      },
+      {
+        "label": "task_completed PROJ-191",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 26,
+        "ok": true
+      },
+      {
+        "label": "GET events",
+        "method": "GET",
+        "path": "/api/simulation/events",
+        "status": 200,
+        "ms": 21,
+        "ok": true
+      },
+      {
+        "label": "gate: pr-before-work PROJ-189",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 15,
+        "ok": true,
+        "error": "Post your stand-up and commit passing work before opening a pull request."
+      },
+      {
+        "label": "standup PROJ-189",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 18,
+        "ok": true
+      },
+      {
+        "label": "chat PROJ-189",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 19,
+        "ok": true
+      },
+      {
+        "label": "agent-turn:engineering",
+        "method": "POST",
+        "path": "/api/simulation/agent-turns",
+        "status": 201,
+        "ms": 1028,
+        "ok": true
+      },
+      {
+        "label": "workspace save PROJ-189",
+        "method": "PUT",
+        "path": "/api/simulation/workspace",
+        "status": 201,
+        "ms": 16,
+        "ok": true
+      },
+      {
+        "label": "validate fail PROJ-189",
+        "method": "POST",
+        "path": "/api/workspace/validate",
+        "status": 422,
+        "ms": 986,
+        "ok": true
+      },
+      {
+        "label": "gate: commit-before-checks PROJ-189",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 20,
+        "ok": true,
+        "error": "Pass the branch checks before committing."
+      },
+      {
+        "label": "validate pass PROJ-189",
+        "method": "POST",
+        "path": "/api/workspace/validate",
+        "status": 201,
+        "ms": 843,
+        "ok": true
+      },
+      {
+        "label": "commit PROJ-189",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 30,
+        "ok": true
+      },
+      {
+        "label": "pr PROJ-189",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 32,
+        "ok": true
+      },
+      {
+        "label": "gate: approval-before-review PROJ-189",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 33,
+        "ok": true,
+        "error": "A reviewer can approve only after you respond to the requested changes."
+      },
+      {
+        "label": "review_addressed PROJ-189",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 23,
+        "ok": true
+      },
+      {
+        "label": "review_reply PROJ-189",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 120,
+        "ok": true
+      },
+      {
+        "label": "agent-turn:engineering",
+        "method": "POST",
+        "path": "/api/simulation/agent-turns",
+        "status": 201,
+        "ms": 5225,
+        "ok": true
+      },
+      {
+        "label": "approval PROJ-189",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 23,
+        "ok": true
+      },
+      {
+        "label": "gate: short rationale PROJ-189",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 28,
+        "ok": true,
+        "error": "Record a clear merge rationale after approval."
+      },
+      {
+        "label": "rationale PROJ-189",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 21,
+        "ok": true
+      },
+      {
+        "label": "gate: complete-before-merge PROJ-189",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 18,
+        "ok": true,
+        "error": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+      },
+      {
+        "label": "merge PROJ-189",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 18,
+        "ok": true
+      },
+      {
+        "label": "task_completed PROJ-189",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 21,
+        "ok": true
+      },
+      {
+        "label": "GET events",
+        "method": "GET",
+        "path": "/api/simulation/events",
+        "status": 200,
+        "ms": 20,
+        "ok": true
+      },
+      {
+        "label": "GET events",
+        "method": "GET",
+        "path": "/api/simulation/events",
+        "status": 200,
+        "ms": 20,
+        "ok": true
+      },
+      {
+        "label": "level:advanced",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 23,
+        "ok": true
+      },
+      {
+        "label": "gate: pr-before-work PROJ-203",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 15,
+        "ok": true,
+        "error": "Post your stand-up and commit passing work before opening a pull request."
+      },
+      {
+        "label": "standup PROJ-203",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 17,
+        "ok": true
+      },
+      {
+        "label": "chat PROJ-203",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 17,
+        "ok": true
+      },
+      {
+        "label": "agent-turn:engineering",
+        "method": "POST",
+        "path": "/api/simulation/agent-turns",
+        "status": 201,
+        "ms": 908,
+        "ok": true
+      },
+      {
+        "label": "workspace save PROJ-203",
+        "method": "PUT",
+        "path": "/api/simulation/workspace",
+        "status": 201,
+        "ms": 18,
+        "ok": true
+      },
+      {
+        "label": "validate fail PROJ-203",
+        "method": "POST",
+        "path": "/api/workspace/validate",
+        "status": 422,
+        "ms": 694,
+        "ok": true
+      },
+      {
+        "label": "gate: commit-before-checks PROJ-203",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 16,
+        "ok": true,
+        "error": "Pass the branch checks before committing."
+      },
+      {
+        "label": "validate pass PROJ-203",
+        "method": "POST",
+        "path": "/api/workspace/validate",
+        "status": 201,
+        "ms": 655,
+        "ok": true
+      },
+      {
+        "label": "commit PROJ-203",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 22,
+        "ok": true
+      },
+      {
+        "label": "pr PROJ-203",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 22,
+        "ok": true
+      },
+      {
+        "label": "gate: approval-before-review PROJ-203",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 18,
+        "ok": true,
+        "error": "A reviewer can approve only after you respond to the requested changes."
+      },
+      {
+        "label": "review_addressed PROJ-203",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 21,
+        "ok": true
+      },
+      {
+        "label": "review_reply PROJ-203",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 15,
+        "ok": true
+      },
+      {
+        "label": "agent-turn:engineering",
+        "method": "POST",
+        "path": "/api/simulation/agent-turns",
+        "status": 201,
+        "ms": 852,
+        "ok": true
+      },
+      {
+        "label": "approval PROJ-203",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 23,
+        "ok": true
+      },
+      {
+        "label": "gate: short rationale PROJ-203",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 22,
+        "ok": true,
+        "error": "Record a clear merge rationale after approval."
+      },
+      {
+        "label": "rationale PROJ-203",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 25,
+        "ok": true
+      },
+      {
+        "label": "gate: complete-before-merge PROJ-203",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 50,
+        "ok": true,
+        "error": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+      },
+      {
+        "label": "merge PROJ-203",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 25,
+        "ok": true
+      },
+      {
+        "label": "task_completed PROJ-203",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 37,
+        "ok": true
+      },
+      {
+        "label": "GET events",
+        "method": "GET",
+        "path": "/api/simulation/events",
+        "status": 200,
+        "ms": 43,
+        "ok": true
+      },
+      {
+        "label": "gate: pr-before-work PROJ-204",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 22,
+        "ok": true,
+        "error": "Post your stand-up and commit passing work before opening a pull request."
+      },
+      {
+        "label": "standup PROJ-204",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 33,
+        "ok": true
+      },
+      {
+        "label": "chat PROJ-204",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 32,
+        "ok": true
+      },
+      {
+        "label": "agent-turn:engineering",
+        "method": "POST",
+        "path": "/api/simulation/agent-turns",
+        "status": 201,
+        "ms": 7308,
+        "ok": true
+      },
+      {
+        "label": "workspace save PROJ-204",
+        "method": "PUT",
+        "path": "/api/simulation/workspace",
+        "status": 201,
+        "ms": 21,
+        "ok": true
+      },
+      {
+        "label": "validate fail PROJ-204",
+        "method": "POST",
+        "path": "/api/workspace/validate",
+        "status": 422,
+        "ms": 610,
+        "ok": true
+      },
+      {
+        "label": "gate: commit-before-checks PROJ-204",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 20,
+        "ok": true,
+        "error": "Pass the branch checks before committing."
+      },
+      {
+        "label": "validate pass PROJ-204",
+        "method": "POST",
+        "path": "/api/workspace/validate",
+        "status": 201,
+        "ms": 623,
+        "ok": true
+      },
+      {
+        "label": "commit PROJ-204",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 16,
+        "ok": true
+      },
+      {
+        "label": "pr PROJ-204",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 19,
+        "ok": true
+      },
+      {
+        "label": "gate: approval-before-review PROJ-204",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 18,
+        "ok": true,
+        "error": "A reviewer can approve only after you respond to the requested changes."
+      },
+      {
+        "label": "review_addressed PROJ-204",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 18,
+        "ok": true
+      },
+      {
+        "label": "review_reply PROJ-204",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 21,
+        "ok": true
+      },
+      {
+        "label": "agent-turn:engineering",
+        "method": "POST",
+        "path": "/api/simulation/agent-turns",
+        "status": 201,
+        "ms": 9902,
+        "ok": true
+      },
+      {
+        "label": "approval PROJ-204",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 19,
+        "ok": true
+      },
+      {
+        "label": "gate: short rationale PROJ-204",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 64,
+        "ok": true,
+        "error": "Record a clear merge rationale after approval."
+      },
+      {
+        "label": "rationale PROJ-204",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 28,
+        "ok": true
+      },
+      {
+        "label": "gate: complete-before-merge PROJ-204",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 16,
+        "ok": true,
+        "error": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+      },
+      {
+        "label": "merge PROJ-204",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 17,
+        "ok": true
+      },
+      {
+        "label": "task_completed PROJ-204",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 21,
+        "ok": true
+      },
+      {
+        "label": "GET events",
+        "method": "GET",
+        "path": "/api/simulation/events",
+        "status": 200,
+        "ms": 24,
+        "ok": true
+      },
+      {
+        "label": "gate: pr-before-work PROJ-205",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 21,
+        "ok": true,
+        "error": "Post your stand-up and commit passing work before opening a pull request."
+      },
+      {
+        "label": "standup PROJ-205",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 18,
+        "ok": true
+      },
+      {
+        "label": "chat PROJ-205",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 14,
+        "ok": true
+      },
+      {
+        "label": "agent-turn:engineering",
+        "method": "POST",
+        "path": "/api/simulation/agent-turns",
+        "status": 201,
+        "ms": 1345,
+        "ok": true
+      },
+      {
+        "label": "workspace save PROJ-205",
+        "method": "PUT",
+        "path": "/api/simulation/workspace",
+        "status": 201,
+        "ms": 18,
+        "ok": true
+      },
+      {
+        "label": "validate fail PROJ-205",
+        "method": "POST",
+        "path": "/api/workspace/validate",
+        "status": 422,
+        "ms": 610,
+        "ok": true
+      },
+      {
+        "label": "gate: commit-before-checks PROJ-205",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 17,
+        "ok": true,
+        "error": "Pass the branch checks before committing."
+      },
+      {
+        "label": "validate pass PROJ-205",
+        "method": "POST",
+        "path": "/api/workspace/validate",
+        "status": 201,
+        "ms": 739,
+        "ok": true
+      },
+      {
+        "label": "commit PROJ-205",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 16,
+        "ok": true
+      },
+      {
+        "label": "pr PROJ-205",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 15,
+        "ok": true
+      },
+      {
+        "label": "gate: approval-before-review PROJ-205",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 15,
+        "ok": true,
+        "error": "A reviewer can approve only after you respond to the requested changes."
+      },
+      {
+        "label": "review_addressed PROJ-205",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 20,
+        "ok": true
+      },
+      {
+        "label": "review_reply PROJ-205",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 15,
+        "ok": true
+      },
+      {
+        "label": "agent-turn:engineering",
+        "method": "POST",
+        "path": "/api/simulation/agent-turns",
+        "status": 201,
+        "ms": 858,
+        "ok": true
+      },
+      {
+        "label": "approval PROJ-205",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 17,
+        "ok": true
+      },
+      {
+        "label": "gate: short rationale PROJ-205",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 19,
+        "ok": true,
+        "error": "Record a clear merge rationale after approval."
+      },
+      {
+        "label": "rationale PROJ-205",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 18,
+        "ok": true
+      },
+      {
+        "label": "gate: complete-before-merge PROJ-205",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 409,
+        "ms": 21,
+        "ok": true,
+        "error": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+      },
+      {
+        "label": "merge PROJ-205",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 21,
+        "ok": true
+      },
+      {
+        "label": "task_completed PROJ-205",
+        "method": "POST",
+        "path": "/api/simulation/events",
+        "status": 201,
+        "ms": 20,
+        "ok": true
+      },
+      {
+        "label": "GET events",
+        "method": "GET",
+        "path": "/api/simulation/events",
+        "status": 200,
+        "ms": 18,
+        "ok": true
+      },
+      {
+        "label": "GET events",
+        "method": "GET",
+        "path": "/api/simulation/events",
+        "status": 200,
+        "ms": 69,
+        "ok": true
+      }
+    ],
+    "gateTests": [
+      {
+        "name": "standup before onboarding",
+        "expected": 409,
+        "actual": 409,
+        "error": "Complete organizational onboarding, required access, and manager-approved readiness before working on the main project."
+      },
+      {
+        "name": "PR before work (PROJ-184)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Post your stand-up and commit passing work before opening a pull request."
+      },
+      {
+        "name": "invalid checks (PROJ-184)",
+        "expected": 422,
+        "actual": 422
+      },
+      {
+        "name": "commit before checks (PROJ-184)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Pass the branch checks before committing."
+      },
+      {
+        "name": "approval before review (PROJ-184)",
+        "expected": 409,
+        "actual": 409,
+        "error": "A reviewer can approve only after you respond to the requested changes."
+      },
+      {
+        "name": "short rationale (PROJ-184)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Record a clear merge rationale after approval."
+      },
+      {
+        "name": "complete before merge (PROJ-184)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+      },
+      {
+        "name": "advanced before intermediate",
+        "expected": 409,
+        "actual": 409,
+        "error": "Complete the current level requirements before starting advanced."
+      },
+      {
+        "name": "PR before work (PROJ-191)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Post your stand-up and commit passing work before opening a pull request."
+      },
+      {
+        "name": "invalid checks (PROJ-191)",
+        "expected": 422,
+        "actual": 422
+      },
+      {
+        "name": "commit before checks (PROJ-191)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Pass the branch checks before committing."
+      },
+      {
+        "name": "approval before review (PROJ-191)",
+        "expected": 409,
+        "actual": 409,
+        "error": "A reviewer can approve only after you respond to the requested changes."
+      },
+      {
+        "name": "short rationale (PROJ-191)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Record a clear merge rationale after approval."
+      },
+      {
+        "name": "complete before merge (PROJ-191)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+      },
+      {
+        "name": "PR before work (PROJ-189)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Post your stand-up and commit passing work before opening a pull request."
+      },
+      {
+        "name": "invalid checks (PROJ-189)",
+        "expected": 422,
+        "actual": 422
+      },
+      {
+        "name": "commit before checks (PROJ-189)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Pass the branch checks before committing."
+      },
+      {
+        "name": "approval before review (PROJ-189)",
+        "expected": 409,
+        "actual": 409,
+        "error": "A reviewer can approve only after you respond to the requested changes."
+      },
+      {
+        "name": "short rationale (PROJ-189)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Record a clear merge rationale after approval."
+      },
+      {
+        "name": "complete before merge (PROJ-189)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+      },
+      {
+        "name": "PR before work (PROJ-203)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Post your stand-up and commit passing work before opening a pull request."
+      },
+      {
+        "name": "invalid checks (PROJ-203)",
+        "expected": 422,
+        "actual": 422
+      },
+      {
+        "name": "commit before checks (PROJ-203)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Pass the branch checks before committing."
+      },
+      {
+        "name": "approval before review (PROJ-203)",
+        "expected": 409,
+        "actual": 409,
+        "error": "A reviewer can approve only after you respond to the requested changes."
+      },
+      {
+        "name": "short rationale (PROJ-203)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Record a clear merge rationale after approval."
+      },
+      {
+        "name": "complete before merge (PROJ-203)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+      },
+      {
+        "name": "PR before work (PROJ-204)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Post your stand-up and commit passing work before opening a pull request."
+      },
+      {
+        "name": "invalid checks (PROJ-204)",
+        "expected": 422,
+        "actual": 422
+      },
+      {
+        "name": "commit before checks (PROJ-204)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Pass the branch checks before committing."
+      },
+      {
+        "name": "approval before review (PROJ-204)",
+        "expected": 409,
+        "actual": 409,
+        "error": "A reviewer can approve only after you respond to the requested changes."
+      },
+      {
+        "name": "short rationale (PROJ-204)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Record a clear merge rationale after approval."
+      },
+      {
+        "name": "complete before merge (PROJ-204)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+      },
+      {
+        "name": "PR before work (PROJ-205)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Post your stand-up and commit passing work before opening a pull request."
+      },
+      {
+        "name": "invalid checks (PROJ-205)",
+        "expected": 422,
+        "actual": 422
+      },
+      {
+        "name": "commit before checks (PROJ-205)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Pass the branch checks before committing."
+      },
+      {
+        "name": "approval before review (PROJ-205)",
+        "expected": 409,
+        "actual": 409,
+        "error": "A reviewer can approve only after you respond to the requested changes."
+      },
+      {
+        "name": "short rationale (PROJ-205)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Record a clear merge rationale after approval."
+      },
+      {
+        "name": "complete before merge (PROJ-205)",
+        "expected": 409,
+        "actual": 409,
+        "error": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+      }
+    ],
+    "openRouter": {
+      "attempted": 12,
+      "live": 12,
+      "fallback": 0,
+      "samples": [
+        {
+          "channelId": "engineering",
+          "agent": {
+            "id": "noah",
+            "name": "Noah Patel",
+            "role": "tech_lead"
+          },
+          "action": "request_review",
+          "live": true,
+          "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+          "message": "@alex, for PROJ-184, to confirm, when `canManageBilling` is `false`, we should hide the empty-state title and description for restricted roles, not just prevent them from accessing the billing feature. This is to maintain a consistent user experience. \n\nRegarding the PR validatio",
+          "ms": 1862
+        },
+        {
+          "channelId": "engineering",
+          "agent": {
+            "id": "noah",
+            "name": "Noah Patel",
+            "role": "tech_lead"
+          },
+          "action": "request_review",
+          "live": true,
+          "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+          "message": "@alex, that's great progress on PROJ-184. I've reviewed the changes and the contract tests passing for restricted roles and legacy workspaces is a good sign. However, I do have one follow-up question: have you also verified that the empty state preservation works as expected for ",
+          "ms": 6533
+        },
+        {
+          "channelId": "engineering",
+          "agent": {
+            "id": "noah",
+            "name": "Noah Patel",
+            "role": "tech_lead"
+          },
+          "action": "request_review",
+          "live": true,
+          "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+          "message": "For PROJ-191, I'd like to clarify: when `canManageBilling` is `false`, should restricted roles still see the empty-state title and description? To confirm, can you provide the specific context or requirements that led to this question? \n\nRegarding the legacy-threshold regression,",
+          "ms": 7732
+        },
+        {
+          "channelId": "engineering",
+          "agent": {
+            "id": "noah",
+            "name": "Noah Patel",
+            "role": "tech_lead"
+          },
+          "action": "request_review",
+          "live": true,
+          "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+          "message": "@alex, thanks for the update. To confirm, you've ensured canManageBilling guards the CTA, preserved the empty state, and passed contract tests for restricted roles and legacy workspaces. Can you also verify that the changes didn't break any existing functionality or introduce any",
+          "ms": 907
+        },
+        {
+          "channelId": "engineering",
+          "agent": {
+            "id": "noah",
+            "name": "Noah Patel",
+            "role": "tech_lead"
+          },
+          "action": "request_review",
+          "live": true,
+          "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+          "message": "@alex, to confirm: when canManageBilling is false, we want to restrict access to billing-related content, including the empty-state title and description for restricted roles. Can you clarify why you're considering including the legacy-threshold regression in the PR validation ev",
+          "ms": 1028
+        },
+        {
+          "channelId": "engineering",
+          "agent": {
+            "id": "noah",
+            "name": "Noah Patel",
+            "role": "tech_lead"
+          },
+          "action": "request_review",
+          "live": true,
+          "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+          "message": "@alex, I've reviewed the changes in PROJ-189, and I'm glad to see the `canManageBilling` guard is in place to protect the CTA. However, I'd like to clarify: are the contract tests passing for all edge cases, including when the workspace is deleted or archived? Can you provide a c",
+          "ms": 5225
+        },
+        {
+          "channelId": "engineering",
+          "agent": {
+            "id": "noah",
+            "name": "Noah Patel",
+            "role": "tech_lead"
+          },
+          "action": "request_review",
+          "live": true,
+          "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+          "message": "@alex, for PROJ-203, I'd like to clarify: with canManageBilling set to false, restricted roles should not see the empty-state title and description. This is based on our previous discussions and the requirement to protect billing CTA.",
+          "ms": 908
+        },
+        {
+          "channelId": "engineering",
+          "agent": {
+            "id": "noah",
+            "name": "Noah Patel",
+            "role": "tech_lead"
+          },
+          "action": "request_review",
+          "live": true,
+          "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+          "message": "@alex, thanks for the update. Before we proceed with approval, I'd like to review the validation evidence for restricted roles and legacy workspaces. Can you please share the specific test cases and results that demonstrate the contract tests pass for these scenarios?",
+          "ms": 852
+        },
+        {
+          "channelId": "engineering",
+          "agent": {
+            "id": "noah",
+            "name": "Noah Patel",
+            "role": "tech_lead"
+          },
+          "action": "request_review",
+          "live": true,
+          "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+          "message": "For PROJ-204, I'd like to clarify that we should prioritize the canManageBilling flag's impact on the empty-state content visibility. To confirm, restricted roles should not see the empty-state title and description when canManageBilling is false. This aligns with our previous di",
+          "ms": 7308
+        },
+        {
+          "channelId": "engineering",
+          "agent": {
+            "id": "noah",
+            "name": "Noah Patel",
+            "role": "tech_lead"
+          },
+          "action": "request_review",
+          "live": true,
+          "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+          "message": "@alex, glad to hear that the review is addressed. However, I'd like to clarify that the validation evidence should also include tests for new workspaces with restricted roles, as our previous discussion indicated that we need to ensure the canManageBilling guard works across diff",
+          "ms": 9902
+        },
+        {
+          "channelId": "engineering",
+          "agent": {
+            "id": "noah",
+            "name": "Noah Patel",
+            "role": "tech_lead"
+          },
+          "action": "request_review",
+          "live": true,
+          "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+          "message": "@alex, to confirm: when `canManageBilling` is `false`, we should hide the empty-state title and description for all roles, including restricted ones, to maintain consistency. Re: the legacy-threshold regression, I'd like to see the specific test case or code change that introduce",
+          "ms": 1345
+        },
+        {
+          "channelId": "engineering",
+          "agent": {
+            "id": "noah",
+            "name": "Noah Patel",
+            "role": "tech_lead"
+          },
+          "action": "request_review",
+          "live": true,
+          "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+          "message": "@alex, I've reviewed the changes, and the validation evidence looks good. However, I'm concerned that we're not considering the impact of this change on the existing billing workflows for non-restricted roles and non-legacy workspaces. Can you clarify the plan for testing those s",
+          "ms": 858
+        }
+      ]
+    },
+    "progression": [
+      {
+        "after": "basic:PROJ-184",
+        "workflow": {
+          "standupPosted": true,
+          "checksPassed": true,
+          "committed": true,
+          "pullRequestOpened": true,
+          "reviewAddressed": true,
+          "reviewReplied": true,
+          "approvalGranted": true,
+          "mergeRationaleRecorded": true,
+          "merged": true
+        },
+        "progression": {
+          "currentLevel": "basic",
+          "completedTaskIds": [
+            "PROJ-184"
+          ],
+          "scores": {
+            "technicalExecution": 83,
+            "collaboration": 100,
+            "ownershipReliability": 100,
+            "processFit": 100
+          },
+          "overallScore": 96,
+          "nextLevel": "intermediate",
+          "requirements": [
+            {
+              "label": "Complete 1 Basic task through the merge gate (1/1)",
+              "complete": true
+            },
+            {
+              "label": "Reach overall coaching readiness of 60 (96/60)",
+              "complete": true
+            },
+            {
+              "label": "Reach technical and process signals of 55 (83/55, 100/55)",
+              "complete": true
+            }
+          ],
+          "unlockedLevels": [
+            "basic",
+            "intermediate"
+          ],
+          "activeTaskId": "PROJ-184",
+          "pendingTaskIds": []
+        }
+      },
+      {
+        "after": "intermediate:PROJ-191",
+        "workflow": {
+          "standupPosted": false,
+          "checksPassed": false,
+          "committed": false,
+          "pullRequestOpened": false,
+          "reviewAddressed": false,
+          "reviewReplied": false,
+          "approvalGranted": false,
+          "mergeRationaleRecorded": false,
+          "merged": false
+        },
+        "progression": {
+          "currentLevel": "intermediate",
+          "completedTaskIds": [
+            "PROJ-191"
+          ],
+          "scores": {
+            "technicalExecution": 83,
+            "collaboration": 100,
+            "ownershipReliability": 100,
+            "processFit": 100
+          },
+          "overallScore": 96,
+          "nextLevel": "advanced",
+          "requirements": [
+            {
+              "label": "Complete 2 Intermediate tasks through the merge gate (1/2)",
+              "complete": false
+            },
+            {
+              "label": "Reach overall coaching readiness of 70 (96/70)",
+              "complete": true
+            },
+            {
+              "label": "Reach technical, collaboration, and process signals of 65 (send one context-rich teammate message; 83/65, 100/65, 100/65)",
+              "complete": true
+            }
+          ],
+          "unlockedLevels": [
+            "basic",
+            "intermediate"
+          ],
+          "activeTaskId": "PROJ-189",
+          "pendingTaskIds": [
+            "PROJ-189"
+          ]
+        }
+      },
+      {
+        "after": "intermediate:PROJ-189",
+        "workflow": {
+          "standupPosted": true,
+          "checksPassed": true,
+          "committed": true,
+          "pullRequestOpened": true,
+          "reviewAddressed": true,
+          "reviewReplied": true,
+          "approvalGranted": true,
+          "mergeRationaleRecorded": true,
+          "merged": true
+        },
+        "progression": {
+          "currentLevel": "intermediate",
+          "completedTaskIds": [
+            "PROJ-191",
+            "PROJ-189"
+          ],
+          "scores": {
+            "technicalExecution": 83,
+            "collaboration": 100,
+            "ownershipReliability": 100,
+            "processFit": 100
+          },
+          "overallScore": 96,
+          "nextLevel": "advanced",
+          "requirements": [
+            {
+              "label": "Complete 2 Intermediate tasks through the merge gate (2/2)",
+              "complete": true
+            },
+            {
+              "label": "Reach overall coaching readiness of 70 (96/70)",
+              "complete": true
+            },
+            {
+              "label": "Reach technical, collaboration, and process signals of 65 (send one context-rich teammate message; 83/65, 100/65, 100/65)",
+              "complete": true
+            }
+          ],
+          "unlockedLevels": [
+            "basic",
+            "intermediate",
+            "advanced"
+          ],
+          "activeTaskId": "PROJ-189",
+          "pendingTaskIds": []
+        }
+      },
+      {
+        "after": "advanced:PROJ-203",
+        "workflow": {
+          "standupPosted": false,
+          "checksPassed": false,
+          "committed": false,
+          "pullRequestOpened": false,
+          "reviewAddressed": false,
+          "reviewReplied": false,
+          "approvalGranted": false,
+          "mergeRationaleRecorded": false,
+          "merged": false
+        },
+        "progression": {
+          "currentLevel": "advanced",
+          "completedTaskIds": [
+            "PROJ-203"
+          ],
+          "scores": {
+            "technicalExecution": 83,
+            "collaboration": 100,
+            "ownershipReliability": 100,
+            "processFit": 100
+          },
+          "overallScore": 96,
+          "nextLevel": null,
+          "requirements": [],
+          "unlockedLevels": [
+            "basic",
+            "intermediate",
+            "advanced"
+          ],
+          "activeTaskId": "PROJ-204",
+          "pendingTaskIds": [
+            "PROJ-204",
+            "PROJ-205"
+          ]
+        }
+      },
+      {
+        "after": "advanced:PROJ-204",
+        "workflow": {
+          "standupPosted": false,
+          "checksPassed": false,
+          "committed": false,
+          "pullRequestOpened": false,
+          "reviewAddressed": false,
+          "reviewReplied": false,
+          "approvalGranted": false,
+          "mergeRationaleRecorded": false,
+          "merged": false
+        },
+        "progression": {
+          "currentLevel": "advanced",
+          "completedTaskIds": [
+            "PROJ-203",
+            "PROJ-204"
+          ],
+          "scores": {
+            "technicalExecution": 83,
+            "collaboration": 100,
+            "ownershipReliability": 100,
+            "processFit": 100
+          },
+          "overallScore": 96,
+          "nextLevel": null,
+          "requirements": [],
+          "unlockedLevels": [
+            "basic",
+            "intermediate",
+            "advanced"
+          ],
+          "activeTaskId": "PROJ-205",
+          "pendingTaskIds": [
+            "PROJ-205"
+          ]
+        }
+      },
+      {
+        "after": "advanced:PROJ-205",
+        "workflow": {
+          "standupPosted": true,
+          "checksPassed": true,
+          "committed": true,
+          "pullRequestOpened": true,
+          "reviewAddressed": true,
+          "reviewReplied": true,
+          "approvalGranted": true,
+          "mergeRationaleRecorded": true,
+          "merged": true
+        },
+        "progression": {
+          "currentLevel": "advanced",
+          "completedTaskIds": [
+            "PROJ-203",
+            "PROJ-204",
+            "PROJ-205"
+          ],
+          "scores": {
+            "technicalExecution": 83,
+            "collaboration": 100,
+            "ownershipReliability": 100,
+            "processFit": 100
+          },
+          "overallScore": 96,
+          "nextLevel": null,
+          "requirements": [],
+          "unlockedLevels": [
+            "basic",
+            "intermediate",
+            "advanced"
+          ],
+          "activeTaskId": "PROJ-205",
+          "pendingTaskIds": []
+        }
+      }
+    ],
+    "final": {
+      "eventCount": 146,
+      "progression": {
+        "currentLevel": "advanced",
+        "completedTaskIds": [
+          "PROJ-203",
+          "PROJ-204",
+          "PROJ-205"
+        ],
+        "scores": {
+          "technicalExecution": 83,
+          "collaboration": 100,
+          "ownershipReliability": 100,
+          "processFit": 100
+        },
+        "overallScore": 96,
+        "nextLevel": null,
+        "requirements": [],
+        "unlockedLevels": [
+          "basic",
+          "intermediate",
+          "advanced"
+        ],
+        "activeTaskId": "PROJ-205",
+        "pendingTaskIds": []
+      },
+      "workflow": {
+        "standupPosted": true,
+        "checksPassed": true,
+        "committed": true,
+        "pullRequestOpened": true,
+        "reviewAddressed": true,
+        "reviewReplied": true,
+        "approvalGranted": true,
+        "mergeRationaleRecorded": true,
+        "merged": true
+      },
+      "openRouter": {
+        "attempted": 12,
+        "live": 12,
+        "fallback": 0,
+        "samples": [
+          {
+            "channelId": "engineering",
+            "agent": {
+              "id": "noah",
+              "name": "Noah Patel",
+              "role": "tech_lead"
+            },
+            "action": "request_review",
+            "live": true,
+            "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+            "message": "@alex, for PROJ-184, to confirm, when `canManageBilling` is `false`, we should hide the empty-state title and description for restricted roles, not just prevent them from accessing the billing feature. This is to maintain a consistent user experience. \n\nRegarding the PR validatio",
+            "ms": 1862
+          },
+          {
+            "channelId": "engineering",
+            "agent": {
+              "id": "noah",
+              "name": "Noah Patel",
+              "role": "tech_lead"
+            },
+            "action": "request_review",
+            "live": true,
+            "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+            "message": "@alex, that's great progress on PROJ-184. I've reviewed the changes and the contract tests passing for restricted roles and legacy workspaces is a good sign. However, I do have one follow-up question: have you also verified that the empty state preservation works as expected for ",
+            "ms": 6533
+          },
+          {
+            "channelId": "engineering",
+            "agent": {
+              "id": "noah",
+              "name": "Noah Patel",
+              "role": "tech_lead"
+            },
+            "action": "request_review",
+            "live": true,
+            "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+            "message": "For PROJ-191, I'd like to clarify: when `canManageBilling` is `false`, should restricted roles still see the empty-state title and description? To confirm, can you provide the specific context or requirements that led to this question? \n\nRegarding the legacy-threshold regression,",
+            "ms": 7732
+          },
+          {
+            "channelId": "engineering",
+            "agent": {
+              "id": "noah",
+              "name": "Noah Patel",
+              "role": "tech_lead"
+            },
+            "action": "request_review",
+            "live": true,
+            "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+            "message": "@alex, thanks for the update. To confirm, you've ensured canManageBilling guards the CTA, preserved the empty state, and passed contract tests for restricted roles and legacy workspaces. Can you also verify that the changes didn't break any existing functionality or introduce any",
+            "ms": 907
+          },
+          {
+            "channelId": "engineering",
+            "agent": {
+              "id": "noah",
+              "name": "Noah Patel",
+              "role": "tech_lead"
+            },
+            "action": "request_review",
+            "live": true,
+            "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+            "message": "@alex, to confirm: when canManageBilling is false, we want to restrict access to billing-related content, including the empty-state title and description for restricted roles. Can you clarify why you're considering including the legacy-threshold regression in the PR validation ev",
+            "ms": 1028
+          },
+          {
+            "channelId": "engineering",
+            "agent": {
+              "id": "noah",
+              "name": "Noah Patel",
+              "role": "tech_lead"
+            },
+            "action": "request_review",
+            "live": true,
+            "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+            "message": "@alex, I've reviewed the changes in PROJ-189, and I'm glad to see the `canManageBilling` guard is in place to protect the CTA. However, I'd like to clarify: are the contract tests passing for all edge cases, including when the workspace is deleted or archived? Can you provide a c",
+            "ms": 5225
+          },
+          {
+            "channelId": "engineering",
+            "agent": {
+              "id": "noah",
+              "name": "Noah Patel",
+              "role": "tech_lead"
+            },
+            "action": "request_review",
+            "live": true,
+            "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+            "message": "@alex, for PROJ-203, I'd like to clarify: with canManageBilling set to false, restricted roles should not see the empty-state title and description. This is based on our previous discussions and the requirement to protect billing CTA.",
+            "ms": 908
+          },
+          {
+            "channelId": "engineering",
+            "agent": {
+              "id": "noah",
+              "name": "Noah Patel",
+              "role": "tech_lead"
+            },
+            "action": "request_review",
+            "live": true,
+            "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+            "message": "@alex, thanks for the update. Before we proceed with approval, I'd like to review the validation evidence for restricted roles and legacy workspaces. Can you please share the specific test cases and results that demonstrate the contract tests pass for these scenarios?",
+            "ms": 852
+          },
+          {
+            "channelId": "engineering",
+            "agent": {
+              "id": "noah",
+              "name": "Noah Patel",
+              "role": "tech_lead"
+            },
+            "action": "request_review",
+            "live": true,
+            "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+            "message": "For PROJ-204, I'd like to clarify that we should prioritize the canManageBilling flag's impact on the empty-state content visibility. To confirm, restricted roles should not see the empty-state title and description when canManageBilling is false. This aligns with our previous di",
+            "ms": 7308
+          },
+          {
+            "channelId": "engineering",
+            "agent": {
+              "id": "noah",
+              "name": "Noah Patel",
+              "role": "tech_lead"
+            },
+            "action": "request_review",
+            "live": true,
+            "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+            "message": "@alex, glad to hear that the review is addressed. However, I'd like to clarify that the validation evidence should also include tests for new workspaces with restricted roles, as our previous discussion indicated that we need to ensure the canManageBilling guard works across diff",
+            "ms": 9902
+          },
+          {
+            "channelId": "engineering",
+            "agent": {
+              "id": "noah",
+              "name": "Noah Patel",
+              "role": "tech_lead"
+            },
+            "action": "request_review",
+            "live": true,
+            "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+            "message": "@alex, to confirm: when `canManageBilling` is `false`, we should hide the empty-state title and description for all roles, including restricted ones, to maintain consistency. Re: the legacy-threshold regression, I'd like to see the specific test case or code change that introduce",
+            "ms": 1345
+          },
+          {
+            "channelId": "engineering",
+            "agent": {
+              "id": "noah",
+              "name": "Noah Patel",
+              "role": "tech_lead"
+            },
+            "action": "request_review",
+            "live": true,
+            "reasoning": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context.",
+            "message": "@alex, I've reviewed the changes, and the validation evidence looks good. However, I'm concerned that we're not considering the impact of this change on the existing billing workflows for non-restricted roles and non-legacy workspaces. Can you clarify the plan for testing those s",
+            "ms": 858
+          }
+        ]
+      },
+      "completedTasks": [
+        {
+          "issueId": "PROJ-184",
+          "level": "basic"
+        },
+        {
+          "issueId": "PROJ-191",
+          "level": "intermediate"
+        },
+        {
+          "issueId": "PROJ-189",
+          "level": "intermediate"
+        },
+        {
+          "issueId": "PROJ-203",
+          "level": "advanced"
+        },
+        {
+          "issueId": "PROJ-204",
+          "level": "advanced"
+        },
+        {
+          "issueId": "PROJ-205",
+          "level": "advanced"
+        }
+      ]
+    },
+    "finishedAt": "2026-07-21T03:32:41.197Z"
+  },
+  "checks": [
+    {
+      "name": "server reachable",
+      "ok": true,
+      "detail": "status=200"
+    },
+    {
+      "name": "demo cookie issued",
+      "ok": true,
+      "detail": "demo-b7376b45-07ed-482c-9759-3e8aa5e0c2b6"
+    },
+    {
+      "name": "onboarding starts in profile phase",
+      "ok": true,
+      "detail": "phase=profile"
+    },
+    {
+      "name": "project work blocked before onboarding",
+      "ok": true,
+      "detail": "Complete organizational onboarding, required access, and manager-approved readiness before working on the main project."
+    },
+    {
+      "name": "training quiz company-mandate",
+      "ok": true,
+      "detail": "Correct. SignalDesk measures success by whether customers can make a trustworthy"
+    },
+    {
+      "name": "training quiz security-privacy",
+      "ok": true,
+      "detail": "Correct. Service-role credentials are privileged and must remain server-side beh"
+    },
+    {
+      "name": "training quiz next-contracts",
+      "ok": true,
+      "detail": "Correct. Authorization must be enforced where the protected action runs. Hiding "
+    },
+    {
+      "name": "training quiz product-legacy-context",
+      "ok": true,
+      "detail": "Correct. Legacy workspaces still need useful guidance, so the empty state remain"
+    },
+    {
+      "name": "training quiz delivery-readiness",
+      "ok": true,
+      "detail": "Correct. The readiness gate checks implementation safety, preserved behavior, va"
+    },
+    {
+      "name": "failed readiness does not qualify",
+      "ok": true,
+      "detail": "score=0"
+    },
+    {
+      "name": "readiness + manager sign-off qualifies learner",
+      "ok": true,
+      "detail": "phase=qualified score=100"
+    },
+    {
+      "name": "selected basic",
+      "ok": true,
+      "detail": "activeTask=PROJ-184"
+    },
+    {
+      "name": "cannot open PR before standup/commit (PROJ-184)",
+      "ok": true,
+      "detail": "Post your stand-up and commit passing work before opening a pull request."
+    },
+    {
+      "name": "agent turn in #engineering",
+      "ok": true,
+      "detail": "Noah Patel: @alex, for PROJ-184, to confirm, when `canManageBilling` is `false`, we should hide the empty-state title and descriptio [OpenRouter live]",
+      "ms": 1862
+    },
+    {
+      "name": "OpenRouter live response for #engineering",
+      "ok": true,
+      "detail": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context."
+    },
+    {
+      "name": "invalid source fails checks (PROJ-184)",
+      "ok": true,
+      "detail": "✖ AlertsPanel has a typed permission input (2.0635ms)\n✖ billing action is protected by canManageBilling (0.6091ms)\n✔ sou"
+    },
+    {
+      "name": "cannot commit before checks (PROJ-184)",
+      "ok": true,
+      "detail": "Pass the branch checks before committing."
+    },
+    {
+      "name": "scenario checks pass (PROJ-184)",
+      "ok": true,
+      "detail": "hash=dda2c0d84a54 duration=578ms"
+    },
+    {
+      "name": "cannot approve before review response (PROJ-184)",
+      "ok": true,
+      "detail": "A reviewer can approve only after you respond to the requested changes."
+    },
+    {
+      "name": "agent turn in #engineering",
+      "ok": true,
+      "detail": "Noah Patel: @alex, that's great progress on PROJ-184. I've reviewed the changes and the contract tests passing for restricted roles  [OpenRouter live]",
+      "ms": 6533
+    },
+    {
+      "name": "OpenRouter live response for #engineering",
+      "ok": true,
+      "detail": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context."
+    },
+    {
+      "name": "short merge rationale rejected (PROJ-184)",
+      "ok": true,
+      "detail": "Record a clear merge rationale after approval."
+    },
+    {
+      "name": "cannot complete task before merge (PROJ-184)",
+      "ok": true,
+      "detail": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+    },
+    {
+      "name": "task completed with evidence report (PROJ-184)",
+      "ok": true,
+      "detail": "nextCycle=none unlock=intermediate"
+    },
+    {
+      "name": "workflow merged after PROJ-184",
+      "ok": true,
+      "detail": "completed=[\"PROJ-184\"] unlocked=[\"basic\",\"intermediate\"] score=96"
+    },
+    {
+      "name": "intermediate unlocked after basic requirements",
+      "ok": true,
+      "detail": "{\"currentLevel\":\"basic\",\"completedTaskIds\":[\"PROJ-184\"],\"scores\":{\"technicalExecution\":83,\"collaboration\":100,\"ownershipReliability\":100,\"processFit\":100},\"overallScore\":96,\"nextLevel\":\"intermediate\",\"requirements\":[{\"label\":\"Complete 1 Basic task through the merge gate (1/1)\",\"complete\":true},{\"label\":\"Reach overall coaching readiness of 60 (96/60)\",\"complete\":true},{\"label\":\"Reach technical and process signals of 55 (83/55, 100/55)\",\"complete\":true}],\"unlockedLevels\":[\"basic\",\"intermediate\"],\"activeTaskId\":\"PROJ-184\",\"pendingTaskIds\":[]}"
+    },
+    {
+      "name": "cannot start advanced before intermediate",
+      "ok": true,
+      "detail": "Complete the current level requirements before starting advanced."
+    },
+    {
+      "name": "selected intermediate",
+      "ok": true,
+      "detail": "activeTask=PROJ-191"
+    },
+    {
+      "name": "cannot open PR before standup/commit (PROJ-191)",
+      "ok": true,
+      "detail": "Post your stand-up and commit passing work before opening a pull request."
+    },
+    {
+      "name": "agent turn in #engineering",
+      "ok": true,
+      "detail": "Noah Patel: For PROJ-191, I'd like to clarify: when `canManageBilling` is `false`, should restricted roles still see the empty-state [OpenRouter live]",
+      "ms": 7732
+    },
+    {
+      "name": "OpenRouter live response for #engineering",
+      "ok": true,
+      "detail": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context."
+    },
+    {
+      "name": "invalid source fails checks (PROJ-191)",
+      "ok": true,
+      "detail": "✖ AlertsPanel has a typed permission input (2.9555ms)\n✖ billing action is protected by canManageBilling (0.6104ms)\n✔ sou"
+    },
+    {
+      "name": "cannot commit before checks (PROJ-191)",
+      "ok": true,
+      "detail": "Pass the branch checks before committing."
+    },
+    {
+      "name": "scenario checks pass (PROJ-191)",
+      "ok": true,
+      "detail": "hash=dda2c0d84a54 duration=735ms"
+    },
+    {
+      "name": "cannot approve before review response (PROJ-191)",
+      "ok": true,
+      "detail": "A reviewer can approve only after you respond to the requested changes."
+    },
+    {
+      "name": "agent turn in #engineering",
+      "ok": true,
+      "detail": "Noah Patel: @alex, thanks for the update. To confirm, you've ensured canManageBilling guards the CTA, preserved the empty state, and [OpenRouter live]",
+      "ms": 907
+    },
+    {
+      "name": "OpenRouter live response for #engineering",
+      "ok": true,
+      "detail": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context."
+    },
+    {
+      "name": "short merge rationale rejected (PROJ-191)",
+      "ok": true,
+      "detail": "Record a clear merge rationale after approval."
+    },
+    {
+      "name": "cannot complete task before merge (PROJ-191)",
+      "ok": true,
+      "detail": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+    },
+    {
+      "name": "task completed with evidence report (PROJ-191)",
+      "ok": true,
+      "detail": "nextCycle=PROJ-189 unlock=none"
+    },
+    {
+      "name": "workflow merged after PROJ-191",
+      "ok": true,
+      "detail": "completed=[\"PROJ-191\"] unlocked=[\"basic\",\"intermediate\"] score=96"
+    },
+    {
+      "name": "cannot open PR before standup/commit (PROJ-189)",
+      "ok": true,
+      "detail": "Post your stand-up and commit passing work before opening a pull request."
+    },
+    {
+      "name": "agent turn in #engineering",
+      "ok": true,
+      "detail": "Noah Patel: @alex, to confirm: when canManageBilling is false, we want to restrict access to billing-related content, including the  [OpenRouter live]",
+      "ms": 1028
+    },
+    {
+      "name": "OpenRouter live response for #engineering",
+      "ok": true,
+      "detail": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context."
+    },
+    {
+      "name": "invalid source fails checks (PROJ-189)",
+      "ok": true,
+      "detail": "✖ AlertsPanel has a typed permission input (5.4489ms)\n✖ billing action is protected by canManageBilling (0.9824ms)\n✔ sou"
+    },
+    {
+      "name": "cannot commit before checks (PROJ-189)",
+      "ok": true,
+      "detail": "Pass the branch checks before committing."
+    },
+    {
+      "name": "scenario checks pass (PROJ-189)",
+      "ok": true,
+      "detail": "hash=dda2c0d84a54 duration=811ms"
+    },
+    {
+      "name": "cannot approve before review response (PROJ-189)",
+      "ok": true,
+      "detail": "A reviewer can approve only after you respond to the requested changes."
+    },
+    {
+      "name": "agent turn in #engineering",
+      "ok": true,
+      "detail": "Noah Patel: @alex, I've reviewed the changes in PROJ-189, and I'm glad to see the `canManageBilling` guard is in place to protect th [OpenRouter live]",
+      "ms": 5225
+    },
+    {
+      "name": "OpenRouter live response for #engineering",
+      "ok": true,
+      "detail": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context."
+    },
+    {
+      "name": "short merge rationale rejected (PROJ-189)",
+      "ok": true,
+      "detail": "Record a clear merge rationale after approval."
+    },
+    {
+      "name": "cannot complete task before merge (PROJ-189)",
+      "ok": true,
+      "detail": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+    },
+    {
+      "name": "task completed with evidence report (PROJ-189)",
+      "ok": true,
+      "detail": "nextCycle=none unlock=advanced"
+    },
+    {
+      "name": "workflow merged after PROJ-189",
+      "ok": true,
+      "detail": "completed=[\"PROJ-191\",\"PROJ-189\"] unlocked=[\"basic\",\"intermediate\",\"advanced\"] score=96"
+    },
+    {
+      "name": "advanced unlocked after intermediate requirements",
+      "ok": true,
+      "detail": "{\"unlocked\":[\"basic\",\"intermediate\",\"advanced\"],\"scores\":{\"technicalExecution\":83,\"collaboration\":100,\"ownershipReliability\":100,\"processFit\":100},\"overall\":96,\"requirements\":[{\"label\":\"Complete 2 Intermediate tasks through the merge gate (2/2)\",\"complete\":true},{\"label\":\"Reach overall coaching readiness of 70 (96/70)\",\"complete\":true},{\"label\":\"Reach technical, collaboration, and process signals of 65 (send one context-rich teammate message; 83/65, 100/65, 100/65)\",\"complete\":true}]}"
+    },
+    {
+      "name": "selected advanced",
+      "ok": true,
+      "detail": "activeTask=PROJ-203"
+    },
+    {
+      "name": "cannot open PR before standup/commit (PROJ-203)",
+      "ok": true,
+      "detail": "Post your stand-up and commit passing work before opening a pull request."
+    },
+    {
+      "name": "agent turn in #engineering",
+      "ok": true,
+      "detail": "Noah Patel: @alex, for PROJ-203, I'd like to clarify: with canManageBilling set to false, restricted roles should not see the empty- [OpenRouter live]",
+      "ms": 908
+    },
+    {
+      "name": "OpenRouter live response for #engineering",
+      "ok": true,
+      "detail": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context."
+    },
+    {
+      "name": "invalid source fails checks (PROJ-203)",
+      "ok": true,
+      "detail": "✖ AlertsPanel has a typed permission input (1.9422ms)\n✖ billing action is protected by canManageBilling (0.6306ms)\n✔ sou"
+    },
+    {
+      "name": "cannot commit before checks (PROJ-203)",
+      "ok": true,
+      "detail": "Pass the branch checks before committing."
+    },
+    {
+      "name": "scenario checks pass (PROJ-203)",
+      "ok": true,
+      "detail": "hash=dda2c0d84a54 duration=636ms"
+    },
+    {
+      "name": "cannot approve before review response (PROJ-203)",
+      "ok": true,
+      "detail": "A reviewer can approve only after you respond to the requested changes."
+    },
+    {
+      "name": "agent turn in #engineering",
+      "ok": true,
+      "detail": "Noah Patel: @alex, thanks for the update. Before we proceed with approval, I'd like to review the validation evidence for restricted [OpenRouter live]",
+      "ms": 852
+    },
+    {
+      "name": "OpenRouter live response for #engineering",
+      "ok": true,
+      "detail": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context."
+    },
+    {
+      "name": "short merge rationale rejected (PROJ-203)",
+      "ok": true,
+      "detail": "Record a clear merge rationale after approval."
+    },
+    {
+      "name": "cannot complete task before merge (PROJ-203)",
+      "ok": true,
+      "detail": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+    },
+    {
+      "name": "task completed with evidence report (PROJ-203)",
+      "ok": true,
+      "detail": "nextCycle=PROJ-204 unlock=none"
+    },
+    {
+      "name": "workflow merged after PROJ-203",
+      "ok": true,
+      "detail": "completed=[\"PROJ-203\"] unlocked=[\"basic\",\"intermediate\",\"advanced\"] score=96"
+    },
+    {
+      "name": "cannot open PR before standup/commit (PROJ-204)",
+      "ok": true,
+      "detail": "Post your stand-up and commit passing work before opening a pull request."
+    },
+    {
+      "name": "agent turn in #engineering",
+      "ok": true,
+      "detail": "Noah Patel: For PROJ-204, I'd like to clarify that we should prioritize the canManageBilling flag's impact on the empty-state conten [OpenRouter live]",
+      "ms": 7308
+    },
+    {
+      "name": "OpenRouter live response for #engineering",
+      "ok": true,
+      "detail": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context."
+    },
+    {
+      "name": "invalid source fails checks (PROJ-204)",
+      "ok": true,
+      "detail": "✖ AlertsPanel has a typed permission input (2.8192ms)\n✖ billing action is protected by canManageBilling (0.512ms)\n✔ sour"
+    },
+    {
+      "name": "cannot commit before checks (PROJ-204)",
+      "ok": true,
+      "detail": "Pass the branch checks before committing."
+    },
+    {
+      "name": "scenario checks pass (PROJ-204)",
+      "ok": true,
+      "detail": "hash=dda2c0d84a54 duration=597ms"
+    },
+    {
+      "name": "cannot approve before review response (PROJ-204)",
+      "ok": true,
+      "detail": "A reviewer can approve only after you respond to the requested changes."
+    },
+    {
+      "name": "agent turn in #engineering",
+      "ok": true,
+      "detail": "Noah Patel: @alex, glad to hear that the review is addressed. However, I'd like to clarify that the validation evidence should also  [OpenRouter live]",
+      "ms": 9902
+    },
+    {
+      "name": "OpenRouter live response for #engineering",
+      "ok": true,
+      "detail": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context."
+    },
+    {
+      "name": "short merge rationale rejected (PROJ-204)",
+      "ok": true,
+      "detail": "Record a clear merge rationale after approval."
+    },
+    {
+      "name": "cannot complete task before merge (PROJ-204)",
+      "ok": true,
+      "detail": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+    },
+    {
+      "name": "task completed with evidence report (PROJ-204)",
+      "ok": true,
+      "detail": "nextCycle=PROJ-205 unlock=none"
+    },
+    {
+      "name": "workflow merged after PROJ-204",
+      "ok": true,
+      "detail": "completed=[\"PROJ-203\",\"PROJ-204\"] unlocked=[\"basic\",\"intermediate\",\"advanced\"] score=96"
+    },
+    {
+      "name": "cannot open PR before standup/commit (PROJ-205)",
+      "ok": true,
+      "detail": "Post your stand-up and commit passing work before opening a pull request."
+    },
+    {
+      "name": "agent turn in #engineering",
+      "ok": true,
+      "detail": "Noah Patel: @alex, to confirm: when `canManageBilling` is `false`, we should hide the empty-state title and description for all role [OpenRouter live]",
+      "ms": 1345
+    },
+    {
+      "name": "OpenRouter live response for #engineering",
+      "ok": true,
+      "detail": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context."
+    },
+    {
+      "name": "invalid source fails checks (PROJ-205)",
+      "ok": true,
+      "detail": "✖ AlertsPanel has a typed permission input (2.0377ms)\n✖ billing action is protected by canManageBilling (0.5056ms)\n✔ sou"
+    },
+    {
+      "name": "cannot commit before checks (PROJ-205)",
+      "ok": true,
+      "detail": "Pass the branch checks before committing."
+    },
+    {
+      "name": "scenario checks pass (PROJ-205)",
+      "ok": true,
+      "detail": "hash=dda2c0d84a54 duration=669ms"
+    },
+    {
+      "name": "cannot approve before review response (PROJ-205)",
+      "ok": true,
+      "detail": "A reviewer can approve only after you respond to the requested changes."
+    },
+    {
+      "name": "agent turn in #engineering",
+      "ok": true,
+      "detail": "Noah Patel: @alex, I've reviewed the changes, and the validation evidence looks good. However, I'm concerned that we're not consider [OpenRouter live]",
+      "ms": 858
+    },
+    {
+      "name": "OpenRouter live response for #engineering",
+      "ok": true,
+      "detail": "OpenRouter responded using meta-llama/llama-3.1-8b-instruct with role-scoped context."
+    },
+    {
+      "name": "short merge rationale rejected (PROJ-205)",
+      "ok": true,
+      "detail": "Record a clear merge rationale after approval."
+    },
+    {
+      "name": "cannot complete task before merge (PROJ-205)",
+      "ok": true,
+      "detail": "Complete the branch, review, approval, rationale, and merge gates before marking a learner task complete."
+    },
+    {
+      "name": "task completed with evidence report (PROJ-205)",
+      "ok": true,
+      "detail": "nextCycle=none unlock=none"
+    },
+    {
+      "name": "workflow merged after PROJ-205",
+      "ok": true,
+      "detail": "completed=[\"PROJ-203\",\"PROJ-204\",\"PROJ-205\"] unlocked=[\"basic\",\"intermediate\",\"advanced\"] score=96"
+    },
+    {
+      "name": "all advanced tasks completed",
+      "ok": true,
+      "detail": "completed=[\"PROJ-203\",\"PROJ-204\",\"PROJ-205\"]"
+    },
+    {
+      "name": "ledger includes onboarding_started",
+      "ok": true,
+      "detail": "count=1"
+    },
+    {
+      "name": "ledger includes onboarding_profile_confirmed",
+      "ok": true,
+      "detail": "count=1"
+    },
+    {
+      "name": "ledger includes policy_acknowledged",
+      "ok": true,
+      "detail": "count=3"
+    },
+    {
+      "name": "ledger includes access_provisioned",
+      "ok": true,
+      "detail": "count=5"
+    },
+    {
+      "name": "ledger includes quiz_passed",
+      "ok": true,
+      "detail": "count=5"
+    },
+    {
+      "name": "ledger includes readiness_task_passed",
+      "ok": true,
+      "detail": "count=1"
+    },
+    {
+      "name": "ledger includes manager_signoff_recorded",
+      "ok": true,
+      "detail": "count=1"
+    },
+    {
+      "name": "ledger includes standup_posted",
+      "ok": true,
+      "detail": "count=6"
+    },
+    {
+      "name": "ledger includes checks_passed",
+      "ok": true,
+      "detail": "count=6"
+    },
+    {
+      "name": "ledger includes commit_created",
+      "ok": true,
+      "detail": "count=6"
+    },
+    {
+      "name": "ledger includes pull_request_opened",
+      "ok": true,
+      "detail": "count=6"
+    },
+    {
+      "name": "ledger includes review_addressed",
+      "ok": true,
+      "detail": "count=6"
+    },
+    {
+      "name": "ledger includes review_reply",
+      "ok": true,
+      "detail": "count=6"
+    },
+    {
+      "name": "ledger includes approval_granted",
+      "ok": true,
+      "detail": "count=6"
+    },
+    {
+      "name": "ledger includes merge_rationale_recorded",
+      "ok": true,
+      "detail": "count=6"
+    },
+    {
+      "name": "ledger includes pull_request_merged",
+      "ok": true,
+      "detail": "count=6"
+    },
+    {
+      "name": "ledger includes task_completed",
+      "ok": true,
+      "detail": "count=6"
+    },
+    {
+      "name": "ledger includes task_report_created",
+      "ok": true,
+      "detail": "count=6"
+    },
+    {
+      "name": "ledger includes agent_reply",
+      "ok": true,
+      "detail": "count=18"
+    }
+  ]
+}

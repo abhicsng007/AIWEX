@@ -1,6 +1,6 @@
 # Production deployment baseline
 
-Shiftline can be deployed as a Next.js application to Vercel, or built as the included standalone Docker image. The platform and a learner's scenario environment must remain separate.
+AIWEX can be deployed as a Next.js application to Vercel, or built as the included standalone Docker image. The platform and a learner's scenario environment must remain separate.
 
 ## Required deployment configuration
 
@@ -14,8 +14,8 @@ Shiftline can be deployed as a Next.js application to Vercel, or built as the in
 ## Container deployment
 
 ```bash
-docker build -t shiftline .
-docker run --rm -p 3000:3000 --env-file .env.local shiftline
+docker build -t AIWEX .
+docker run --rm -p 3000:3000 --env-file .env.local AIWEX
 ```
 
 The image uses Next.js standalone output and runs as a non-root user.
@@ -33,4 +33,4 @@ The image uses Next.js standalone output and runs as a non-root user.
 
 The API exposes the first measurable scenario at `GET /api/simulation/performance?organizationId=<id>`. Results may be recorded only for `scenario-staging` through `POST` to the same endpoint. The scenario enforces a maximum 200 virtual users, a 10–300 second duration, synthetic data, and written validation notes.
 
-Never load-test the Shiftline platform's production URL. Give each learner/team a disposable scenario target with an independent database and strict spending, time, and concurrency limits.
+Never load-test the AIWEX platform's production URL. Give each learner/team a disposable scenario target with an independent database and strict spending, time, and concurrency limits.
