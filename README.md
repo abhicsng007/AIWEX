@@ -192,9 +192,15 @@ model, with a deterministic fallback for the core simulation.
 ## Current direction
 
 AIWEX currently focuses on a single, deeply connected engineering scenario. My
-next direction is to add more scenarios, role-specific coaching, team
-simulations, accessibility improvements, and shareable evidence portfolios that
-still respect a learner's privacy.
+next direction is to: 
+- Add real production-level projects that closely resemble professional software development and open-source contributions.
+- Support collaborative teams where multiple learners can work together in a shared environment, fostering teamwork, competition, and community-driven learning.
+- Build an admin dashboard and recruiter portal that allows employers to evaluate candidates based on verified performance and workplace behavior.
+- Introduce user stories and AI-powered client interactions to simulate gathering requirements and building projects from scratch.
+- Expand the capabilities of the in-app IDE.
+- Simulate a complete DevOps workflow using real cloud infrastructure and deployment pipelines.
+- Add support for non-technical career paths, making AIWEX valuable to a broader audience.
+- Integrate voice and video collaboration with AI avatars and speech-to-speech conversations to create an even more realistic workplace experience.
 
 ## License
 
